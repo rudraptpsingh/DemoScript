@@ -1,0 +1,27 @@
+name: Update README Demo
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.demoscript/demo.json'
+
+jobs:
+  update-demo:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Render and commit demo GIF
+        uses: rudraptpsingh/demoscript@v1
+        with:
+          script-path: .demoscript/demo.json
+          output-path: .demoscript/output
+          format: gif
+          commit-output: 'true'
+          commit-message: 'chore: update demo video [skip ci]'
