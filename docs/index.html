@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DemoScript — Config-to-video for any website</title>
+  <meta name="description" content="Generate polished demo videos from any URL. No screen recording. No manual clicking. Just a JSON config and a CLI command.">
+  <meta property="og:title" content="DemoScript">
+  <meta property="og:description" content="Generate polished demo videos from any URL. Config-to-video in one command.">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <style>
+    :root {
+      --bg: #09090b;
+      --surface: #18181b;
+      --border: #27272a;
+      --text: #fafafa;
+      --muted: #a1a1aa;
+      --accent: #818cf8;
+      --accent-dim: #6366f1;
+      --green: #34d399;
+      --amber: #fbbf24;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code { font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; }
+
+    /* Nav */
+    nav {
+      position: fixed;
+      top: 0;
+      width: 100%;
+      z-index: 100;
+      padding: 16px 0;
+      background: rgba(9, 9, 11, 0.8);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-inner {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .logo { font-size: 18px; font-weight: 700; color: var(--text); }
+    .nav-links { display: flex; gap: 24px; align-items: center; }
+    .nav-links a { color: var(--muted); font-size: 14px; font-weight: 500; }
+    .nav-links a:hover { color: var(--text); text-decoration: none; }
+    .btn-nav {
+      padding: 8px 18px;
+      background: var(--accent-dim);
+      color: white;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .btn-nav:hover { background: var(--accent); text-decoration: none; }
+
+    /* Hero */
+    .hero {
+      padding: 160px 24px 100px;
+      text-align: center;
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .badge {
+      display: inline-block;
+      padding: 6px 16px;
+      background: rgba(99, 102, 241, 0.1);
+      border: 1px solid rgba(99, 102, 241, 0.2);
+      border-radius: 100px;
+      font-size: 13px;
+      color: var(--accent);
+      font-weight: 500;
+      margin-bottom: 24px;
+    }
+    .hero h1 {
+      font-size: clamp(40px, 6vw, 64px);
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      line-height: 1.1;
+      margin-bottom: 20px;
+    }
+    .hero h1 span {
+      background: linear-gradient(135deg, var(--accent) 0%, #c084fc 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero p {
+      font-size: 18px;
+      color: var(--muted);
+      max-width: 560px;
+      margin: 0 auto 40px;
+    }
+    .hero-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 14px 28px;
+      border-radius: 10px;
+      font-size: 15px;
+      font-weight: 600;
+      transition: all 0.15s;
+      border: none;
+      cursor: pointer;
+    }
+    .btn-primary { background: var(--accent-dim); color: white; }
+    .btn-primary:hover { background: var(--accent); text-decoration: none; }
+    .btn-secondary { background: var(--surface); color: var(--text); border: 1px solid var(--border); }
+    .btn-secondary:hover { border-color: var(--muted); text-decoration: none; }
+
+    /* Install block */
+    .install {
+      margin: 48px auto 0;
+      max-width: 500px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .install code {
+      font-size: 15px;
+      color: var(--green);
+    }
+    .install button {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      padding: 6px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.15s;
+    }
+    .install button:hover { color: var(--text); border-color: var(--muted); }
+
+    /* Code demo */
+    .demo {
+      max-width: 720px;
+      margin: 64px auto 0;
+      padding: 0 24px;
+    }
+    .code-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      overflow: hidden;
+    }
+    .code-header {
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .code-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .code-dot:nth-child(1) { background: #ef4444; }
+    .code-dot:nth-child(2) { background: #eab308; }
+    .code-dot:nth-child(3) { background: #22c55e; }
+    .code-header span { margin-left: 8px; color: var(--muted); font-size: 13px; }
+    .code-body {
+      padding: 20px 24px;
+      overflow-x: auto;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+    .code-body code { color: var(--muted); }
+    .code-body .comment { color: #52525b; }
+    .code-body .string { color: var(--green); }
+    .code-body .key { color: var(--accent); }
+    .code-body .num { color: var(--amber); }
+
+    /* How it works */
+    .how {
+      max-width: 1100px;
+      margin: 120px auto 0;
+      padding: 0 24px;
+    }
+    .section-label {
+      text-align: center;
+      font-size: 13px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--accent);
+      margin-bottom: 12px;
+    }
+    .section-title {
+      text-align: center;
+      font-size: 36px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 60px;
+    }
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+    .step {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+    }
+    .step-num {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      background: rgba(99, 102, 241, 0.1);
+      color: var(--accent);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      font-size: 15px;
+      margin-bottom: 16px;
+    }
+    .step h3 { font-size: 18px; font-weight: 600; margin-bottom: 8px; }
+    .step p { color: var(--muted); font-size: 14px; }
+
+    /* Actions */
+    .actions-section {
+      max-width: 1100px;
+      margin: 120px auto 0;
+      padding: 0 24px;
+    }
+    .actions-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+    }
+    .action-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 24px;
+      text-align: center;
+    }
+    .action-card .icon {
+      font-size: 28px;
+      margin-bottom: 10px;
+      display: block;
+    }
+    .action-card h4 { font-size: 15px; font-weight: 600; margin-bottom: 4px; }
+    .action-card p { color: var(--muted); font-size: 13px; }
+
+    /* Use cases */
+    .use-cases {
+      max-width: 1100px;
+      margin: 120px auto 0;
+      padding: 0 24px;
+    }
+    .use-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 24px;
+    }
+    .use-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 32px;
+    }
+    .use-card h3 { font-size: 17px; font-weight: 600; margin-bottom: 8px; }
+    .use-card p { color: var(--muted); font-size: 14px; }
+
+    /* CTA */
+    .cta {
+      max-width: 700px;
+      margin: 120px auto 0;
+      padding: 0 24px;
+      text-align: center;
+    }
+    .cta h2 {
+      font-size: 36px;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+      margin-bottom: 16px;
+    }
+    .cta p { color: var(--muted); font-size: 16px; margin-bottom: 32px; }
+    .cta-code {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 28px;
+      display: inline-block;
+      margin-bottom: 32px;
+    }
+    .cta-code code { font-size: 16px; color: var(--green); }
+
+    /* Footer */
+    footer {
+      margin-top: 120px;
+      padding: 40px 24px;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    footer a { color: var(--muted); }
+    footer a:hover { color: var(--text); }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .steps, .actions-grid, .use-grid { grid-template-columns: 1fr; }
+      .hero { padding: 120px 20px 60px; }
+      .hero h1 { font-size: 36px; }
+      .nav-links a:not(.btn-nav) { display: none; }
+    }
+    @media (max-width: 1024px) {
+      .actions-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <div class="nav-inner">
+      <div class="logo">DemoScript</div>
+      <div class="nav-links">
+        <a href="#how">How it works</a>
+        <a href="#actions">Actions</a>
+        <a href="https://github.com/rudraptpsingh/DemoScript" class="btn-nav">GitHub</a>
+      </div>
+    </div>
+  </nav>
+
+  <section class="hero">
+    <div class="badge">Open Source &middot; MIT Licensed</div>
+    <h1>Demo videos from <span>config, not clicks</span></h1>
+    <p>Point at any URL. Define scroll, zoom, and highlight actions in JSON. Get a polished MP4 or GIF in one command. No screen recording. No manual work.</p>
+    <div class="hero-actions">
+      <a href="https://github.com/rudraptpsingh/DemoScript" class="btn btn-primary">View on GitHub</a>
+      <a href="#setup" class="btn btn-secondary">Quick start</a>
+    </div>
+    <div class="install">
+      <code>npm install demoscript</code>
+      <button onclick="navigator.clipboard.writeText('npm install demoscript');this.textContent='Copied!';setTimeout(()=>this.textContent='Copy',1500)">Copy</button>
+    </div>
+  </section>
+
+  <div class="demo">
+    <div class="code-block">
+      <div class="code-header">
+        <div class="code-dot"></div><div class="code-dot"></div><div class="code-dot"></div>
+        <span>demo.json</span>
+      </div>
+      <div class="code-body"><code>{
+  <span class="key">"url"</span>: <span class="string">"https://your-product.com"</span>,
+  <span class="key">"steps"</span>: [
+    { <span class="key">"action"</span>: <span class="string">"wait"</span>, <span class="key">"duration"</span>: <span class="num">1</span>, <span class="key">"annotation"</span>: <span class="string">"Welcome to Acme"</span> },
+    { <span class="key">"action"</span>: <span class="string">"highlight"</span>, <span class="key">"target"</span>: <span class="string">"h1"</span>, <span class="key">"duration"</span>: <span class="num">2</span>, <span class="key">"highlightColor"</span>: <span class="string">"#6366F1"</span> },
+    { <span class="key">"action"</span>: <span class="string">"zoom-in"</span>, <span class="key">"target"</span>: <span class="string">"h1"</span>, <span class="key">"duration"</span>: <span class="num">1.5</span>, <span class="key">"zoom"</span>: <span class="num">2.0</span> },
+    { <span class="key">"action"</span>: <span class="string">"scroll-to"</span>, <span class="key">"target"</span>: <span class="string">"#pricing"</span>, <span class="key">"duration"</span>: <span class="num">2</span> },
+    { <span class="key">"action"</span>: <span class="string">"highlight"</span>, <span class="key">"target"</span>: <span class="string">".plan-pro"</span>, <span class="key">"duration"</span>: <span class="num">2</span>, <span class="key">"highlightColor"</span>: <span class="string">"#f59e0b"</span> }
+  ]
+}</code></div>
+    </div>
+  </div>
+
+  <section class="how" id="how">
+    <div class="section-label">How it works</div>
+    <h2 class="section-title">Three steps. Real video.</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <h3>Discover elements</h3>
+        <p>Run <code>demoscript capture &lt;url&gt;</code> to scan any page and get a list of CSS selectors you can target.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <h3>Write your script</h3>
+        <p>Define steps in a JSON file: scroll here, zoom there, highlight this. Set durations and easing curves.</p>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <h3>Render</h3>
+        <p>Run <code>demoscript render --script demo.json</code> and get an MP4 or GIF. Headless Chromium + FFmpeg does the rest.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="actions-section" id="actions">
+    <div class="section-label">Actions</div>
+    <h2 class="section-title">Everything you need in a demo</h2>
+    <div class="actions-grid">
+      <div class="action-card">
+        <span class="icon">&#8595;</span>
+        <h4>scroll-to</h4>
+        <p>Smooth scroll to any element</p>
+      </div>
+      <div class="action-card">
+        <span class="icon">&#x1F50D;</span>
+        <h4>zoom-in / out</h4>
+        <p>Focus on details with configurable zoom</p>
+      </div>
+      <div class="action-card">
+        <span class="icon">&#x2728;</span>
+        <h4>highlight</h4>
+        <p>Colored border around any element</p>
+      </div>
+      <div class="action-card">
+        <span class="icon">&#x2194;</span>
+        <h4>pan</h4>
+        <p>Smooth viewport panning</p>
+      </div>
+      <div class="action-card">
+        <span class="icon">&#x1F5B1;</span>
+        <h4>cursor-move</h4>
+        <p>Animate cursor to an element</p>
+      </div>
+      <div class="action-card">
+        <span class="icon">&#x1F446;</span>
+        <h4>click</h4>
+        <p>Move to element and click it</p>
+      </div>
+      <div class="action-card">
+        <span class="icon">&#x23F8;</span>
+        <h4>wait</h4>
+        <p>Hold the frame with optional text</p>
+      </div>
+      <div class="action-card">
+        <span class="icon">&#x1F4AC;</span>
+        <h4>annotations</h4>
+        <p>Text overlays on any step</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="use-cases">
+    <div class="section-label">Use cases</div>
+    <h2 class="section-title">Replace manual recordings</h2>
+    <div class="use-grid">
+      <div class="use-card">
+        <h3>Product demos</h3>
+        <p>Ship a landing page update and regenerate the demo video in CI. Always up to date, zero manual effort.</p>
+      </div>
+      <div class="use-card">
+        <h3>Docs and changelogs</h3>
+        <p>Embed GIFs in your README or changelog that show exactly what changed. Script once, render on every release.</p>
+      </div>
+      <div class="use-card">
+        <h3>Sales and marketing</h3>
+        <p>Generate personalized demo videos per prospect by swapping the URL. Same script, different sites.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta" id="setup">
+    <div class="section-label">Get started</div>
+    <h2>One install. One command.</h2>
+    <p>Works on any public URL. Outputs MP4 or GIF. No accounts, no API keys.</p>
+    <div class="cta-code">
+      <code>npx demoscript render --script demo.json</code>
+    </div>
+    <div>
+      <a href="https://github.com/rudraptpsingh/DemoScript" class="btn btn-primary">View on GitHub</a>
+    </div>
+  </section>
+
+  <footer>
+    <p>
+      DemoScript is open source under the MIT License.
+      Built by <a href="https://github.com/rudraptpsingh">Rudra Pratap Singh</a>.
+    </p>
+  </footer>
+
+</body>
+</html>
