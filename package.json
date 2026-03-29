@@ -1,34 +1,78 @@
 {
   "name": "demoscript",
   "version": "0.1.0",
-  "private": true,
+  "description": "Generate polished demo videos from any URL. Define scroll, zoom, highlight, and pan actions on page elements — renders MP4/GIF automatically via headless Chromium + FFmpeg.",
+  "private": false,
+  "license": "MIT",
+  "author": "Rudra Pratap Singh",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rudraptpsingh/DemoScript"
+  },
+  "keywords": [
+    "demo",
+    "video",
+    "screen-recording",
+    "playwright",
+    "ffmpeg",
+    "mp4",
+    "gif",
+    "automation",
+    "cli"
+  ],
+  "main": "./dist/pkg/index.js",
+  "types": "./dist/pkg/index.d.ts",
+  "bin": {
+    "demoscript": "./dist/pkg/cli.js"
+  },
+  "exports": {
+    ".": {
+      "require": "./dist/pkg/index.js",
+      "types": "./dist/pkg/index.d.ts"
+    }
+  },
+  "files": [
+    "dist/pkg",
+    "dist/lib/types.*",
+    "dist/lib/renderer",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "build:pkg": "tsc -p tsconfig.pkg.json",
+    "prepublishOnly": "npm run build:pkg"
   },
   "dependencies": {
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
-    "@types/better-sqlite3": "^7.6.13",
-    "@types/fluent-ffmpeg": "^2.1.28",
-    "better-sqlite3": "^12.8.0",
     "fluent-ffmpeg": "^2.1.3",
     "nanoid": "^5.1.7",
-    "next": "16.2.1",
     "playwright": "^1.56.1",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
     "zod": "^4.3.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/fluent-ffmpeg": "^2.1.28",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.1",
+    "next": "16.2.1",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "better-sqlite3": "^12.8.0"
+  },
+  "peerDependencies": {
+    "playwright": ">=1.40.0"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
