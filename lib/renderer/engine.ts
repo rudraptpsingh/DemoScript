@@ -137,9 +137,10 @@ export async function renderScript(options: RenderOptions): Promise<string | Mul
 
     const capturedFrames = frameCount.value - 1
 
-    // Multi-format export path
-    if (formats && formats.length > 1) {
-      progress(80, `Captured ${capturedFrames} frames. Encoding ${formats.length} formats...`)
+    // Multi-format export path (any time formats array is explicitly provided)
+    if (formats && formats.length >= 1) {
+      const fmtLabel = formats.length === 1 ? '1 format' : `${formats.length} formats`
+      progress(80, `Captured ${capturedFrames} frames. Encoding ${fmtLabel}...`)
       const baseOutputPath = path.join(outputDir, `demo_${script.id}`)
       const results: MultiFormatResult = await encodeMultipleFormats({
         frameDir,

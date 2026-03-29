@@ -343,7 +343,12 @@ async function main() {
         console.error(`Error: Script file not found: ${resolved}`)
         process.exit(1)
       }
-      scriptFile = JSON.parse(fs.readFileSync(resolved, 'utf-8'))
+      try {
+        scriptFile = JSON.parse(fs.readFileSync(resolved, 'utf-8'))
+      } catch (err) {
+        console.error(`Error: Failed to parse script file: ${err instanceof Error ? err.message : err}`)
+        process.exit(1)
+      }
     }
 
     const url = inlineUrl || scriptFile?.url

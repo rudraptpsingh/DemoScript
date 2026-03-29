@@ -103,6 +103,10 @@ export async function encodeMultipleFormats(
 ): Promise<MultiFormatResult> {
   const { frameDir, baseOutputPath, fps, viewport, formatIds } = options
 
+  if (formatIds.length === 0) {
+    return {}
+  }
+
   const tasks = formatIds.map(async (formatId): Promise<[string, FormatEncodeResult]> => {
     const spec = FORMAT_SPECS[formatId]
     if (!spec) {

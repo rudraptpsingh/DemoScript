@@ -156,7 +156,7 @@ export class DemoScriptCloudClient {
     while (Date.now() < deadline) {
       await new Promise((r) => setTimeout(r, 3000))
 
-      let pollRes: Response
+      let pollRes: Response | null = null
       let pollBackoff = 1000
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
@@ -169,7 +169,9 @@ export class DemoScriptCloudClient {
         }
       }
 
-      const job = await this.handleResponse(pollRes!) as {
+      if (!pollRes) throw new NetworkError('Failed to poll job status after retries')
+
+      const job = await this.handleResponse(pollRes) as {
         jobId: string
         status: string
         progress: number
