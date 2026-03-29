@@ -1,0 +1,13 @@
+{
+  "url": "http://localhost:3099/test-site.html",
+  "steps": [
+    { "action": "wait", "duration": 0.8, "annotation": "Acme Platform Demo" },
+    { "action": "highlight", "target": "#hero h1", "duration": 1.5, "highlightColor": "#667eea" },
+    { "action": "zoom-in", "target": "#hero h1", "duration": 1.0, "zoom": 2.0 },
+    { "action": "zoom-out", "duration": 0.8 },
+    { "action": "scroll-to", "target": "#features", "duration": 1.5, "annotation": "Key Features" },
+    { "action": "highlight", "target": ".feature-card", "duration": 1.0, "highlightColor": "#22c55e" },
+    { "action": "scroll-to", "target": "#pricing", "duration": 1.5, "annotation": "Pricing Plans" },
+    { "action": "highlight", "target": ".pricing-card.featured", "duration": 1.5, "highlightColor": "#f59e0b" }
+  ]
+}
