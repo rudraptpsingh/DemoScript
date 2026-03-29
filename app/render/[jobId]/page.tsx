@@ -14,7 +14,7 @@ export default function RenderPage({
   const [error, setError] = useState('')
 
   useEffect(() => {
-    let interval: ReturnType<typeof setInterval>
+    let stopped = false
 
     async function pollJob() {
       try {
@@ -24,16 +24,18 @@ export default function RenderPage({
         setJob(data)
 
         if (data.status === 'complete' || data.status === 'failed') {
-          clearInterval(interval)
+          stopped = true
         }
       } catch {
         setError('Failed to fetch job status')
-        clearInterval(interval)
+        stopped = true
       }
     }
 
+    const interval = setInterval(() => {
+      if (!stopped) pollJob()
+    }, 1500)
     pollJob()
-    interval = setInterval(pollJob, 1500)
     return () => clearInterval(interval)
   }, [jobId])
 
