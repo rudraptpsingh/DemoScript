@@ -46,7 +46,9 @@
     "build:pkg": "tsc -p tsconfig.pkg.json",
     "build:action": "cd github-action && npm install && npx ncc build src/main.ts -o dist --license licenses.txt",
     "typecheck": "tsc --noEmit",
-    "test": "npx tsx --test tests/phase2.test.ts tests/phase3.test.ts tests/phase5.test.ts tests/phase1.test.ts tests/phase4.test.ts",
+    "test": "npx tsx --test tests/watch-mode.test.ts tests/multi-format.test.ts tests/github-action.test.ts tests/ai-generator.test.ts tests/cloud-client.test.ts tests/unit-coverage.test.ts tests/edge-cases.test.ts",
+    "test:e2e": "npx tsx --test tests/e2e.test.ts",
+    "test:all": "npx tsx --test tests/watch-mode.test.ts tests/multi-format.test.ts tests/github-action.test.ts tests/ai-generator.test.ts tests/cloud-client.test.ts tests/unit-coverage.test.ts tests/edge-cases.test.ts tests/e2e.test.ts",
     "prepublishOnly": "npm run build:pkg"
   },
   "dependencies": {
