@@ -49,7 +49,7 @@ export async function renderScript(options: RenderOptions): Promise<string> {
       const style = document.createElement('style')
       style.textContent = `
         *, *::before, *::after {
-          animation-play-state: running !important;
+          animation-play-state: paused !important;
           transition-duration: 0ms !important;
         }
       `

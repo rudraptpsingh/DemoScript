@@ -20,11 +20,18 @@ export async function GET(
   }
 
   const fileBuffer = fs.readFileSync(job.output_path)
-  const filename = `demo_${jobId}.mp4`
+  const ext = job.output_path.split('.').pop() || 'mp4'
+  const filename = `demo_${jobId}.${ext}`
+  const contentType =
+    ext === 'gif'
+      ? 'image/gif'
+      : ext === 'webm'
+        ? 'video/webm'
+        : 'video/mp4'
 
   return new NextResponse(fileBuffer, {
     headers: {
-      'Content-Type': 'video/mp4',
+      'Content-Type': contentType,
       'Content-Disposition': `attachment; filename="${filename}"`,
       'Content-Length': String(fileBuffer.length),
       'Cache-Control': 'no-cache',

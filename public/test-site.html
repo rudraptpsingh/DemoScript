@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DemoScript Test Site</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #0a0a0a; color: #fff; }
+
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 40px;
+      background: linear-gradient(135deg, #0f0f23 0%, #1a1a3e 50%, #0f0f23 100%);
+    }
+
+    h1 {
+      font-size: 64px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 24px;
+    }
+
+    .subtitle {
+      font-size: 22px;
+      color: #888;
+      max-width: 600px;
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    .cta-button {
+      margin-top: 40px;
+      padding: 16px 48px;
+      font-size: 18px;
+      font-weight: 600;
+      color: white;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      border: none;
+      border-radius: 12px;
+      cursor: pointer;
+    }
+
+    .features {
+      padding: 120px 60px;
+      background: #111;
+    }
+
+    .features h2 {
+      font-size: 42px;
+      text-align: center;
+      margin-bottom: 60px;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 40px;
+      max-width: 1100px;
+      margin: 0 auto;
+    }
+
+    .feature-card {
+      background: #1a1a2e;
+      border: 1px solid #2a2a4e;
+      border-radius: 16px;
+      padding: 36px;
+    }
+
+    .feature-card h3 {
+      font-size: 22px;
+      margin-bottom: 12px;
+      color: #667eea;
+    }
+
+    .feature-card p {
+      color: #888;
+      line-height: 1.6;
+    }
+
+    .pricing {
+      padding: 120px 60px;
+      background: #0a0a1a;
+    }
+
+    .pricing h2 {
+      font-size: 42px;
+      text-align: center;
+      margin-bottom: 60px;
+    }
+
+    .pricing-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 30px;
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+
+    .pricing-card {
+      background: #111;
+      border: 1px solid #222;
+      border-radius: 16px;
+      padding: 40px;
+      text-align: center;
+    }
+
+    .pricing-card.featured {
+      border-color: #667eea;
+      background: #0f0f2a;
+    }
+
+    .pricing-card h3 { font-size: 24px; margin-bottom: 8px; }
+    .pricing-card .price { font-size: 48px; font-weight: 800; margin: 20px 0; }
+    .pricing-card .price span { font-size: 18px; color: #666; }
+    .pricing-card ul { list-style: none; margin: 24px 0; }
+    .pricing-card li { padding: 8px 0; color: #aaa; }
+
+    .testimonials {
+      padding: 120px 60px;
+      background: #111;
+    }
+
+    .testimonials h2 {
+      font-size: 42px;
+      text-align: center;
+      margin-bottom: 60px;
+    }
+
+    .testimonial-card {
+      max-width: 700px;
+      margin: 0 auto;
+      background: #1a1a2e;
+      border-radius: 16px;
+      padding: 40px;
+      text-align: center;
+    }
+
+    .testimonial-card blockquote {
+      font-size: 20px;
+      line-height: 1.6;
+      color: #ccc;
+      font-style: italic;
+    }
+
+    .testimonial-card .author {
+      margin-top: 20px;
+      color: #667eea;
+      font-weight: 600;
+    }
+
+    footer {
+      padding: 60px;
+      background: #050510;
+      text-align: center;
+      color: #555;
+    }
+
+    footer h3 { color: #fff; font-size: 24px; margin-bottom: 16px; }
+  </style>
+</head>
+<body>
+  <section class="hero" id="hero">
+    <h1>Acme Platform</h1>
+    <p class="subtitle">The all-in-one platform for building, deploying, and scaling modern applications. Ship faster with confidence.</p>
+    <button class="cta-button" id="cta">Get Started Free</button>
+  </section>
+
+  <section class="features" id="features">
+    <h2>Powerful Features</h2>
+    <div class="feature-grid">
+      <div class="feature-card">
+        <h3>Lightning Fast</h3>
+        <p>Deploy in seconds with our globally distributed edge network. Zero cold starts.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Auto Scaling</h3>
+        <p>Scale from zero to millions automatically. Only pay for what you use.</p>
+      </div>
+      <div class="feature-card">
+        <h3>Built-in Analytics</h3>
+        <p>Real-time monitoring and analytics. Know exactly how your app performs.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="pricing" id="pricing">
+    <h2>Simple Pricing</h2>
+    <div class="pricing-grid">
+      <div class="pricing-card">
+        <h3>Starter</h3>
+        <div class="price">$0<span>/mo</span></div>
+        <ul>
+          <li>1,000 requests/day</li>
+          <li>1 GB storage</li>
+          <li>Community support</li>
+        </ul>
+      </div>
+      <div class="pricing-card featured">
+        <h3>Pro</h3>
+        <div class="price">$29<span>/mo</span></div>
+        <ul>
+          <li>Unlimited requests</li>
+          <li>100 GB storage</li>
+          <li>Priority support</li>
+        </ul>
+      </div>
+      <div class="pricing-card">
+        <h3>Enterprise</h3>
+        <div class="price">$99<span>/mo</span></div>
+        <ul>
+          <li>Custom limits</li>
+          <li>Unlimited storage</li>
+          <li>Dedicated support</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="testimonials" id="testimonials">
+    <h2>What People Say</h2>
+    <div class="testimonial-card">
+      <blockquote>"Acme Platform cut our deployment time from hours to seconds. The developer experience is unmatched."</blockquote>
+      <div class="author">- Sarah Chen, CTO at TechCorp</div>
+    </div>
+  </section>
+
+  <footer id="footer">
+    <h3>Acme Platform</h3>
+    <p>Built for developers, by developers. &copy; 2024 Acme Inc.</p>
+  </footer>
+</body>
+</html>

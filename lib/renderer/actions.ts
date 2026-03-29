@@ -250,6 +250,37 @@ export async function removeAnnotation(page: Page): Promise<void> {
   })
 }
 
+export async function actionClick(ctx: ActionContext): Promise<void> {
+  const { page, step, viewport } = ctx
+
+  // Move cursor to element first
+  const targetPos = await page.evaluate((selector) => {
+    const el = selector ? document.querySelector(selector) : null
+    if (!el) return { x: 100, y: 100 }
+    const rect = el.getBoundingClientRect()
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+  }, step.target)
+
+  const startX = viewport.width / 2
+  const startY = viewport.height / 2
+
+  // Use half the duration for moving, half for the click hold
+  const moveDuration = step.duration * 0.6
+  const holdDuration = step.duration * 0.4
+
+  await captureFrames(ctx, moveDuration, async (progress) => {
+    const x = startX + (targetPos.x - startX) * progress
+    const y = startY + (targetPos.y - startY) * progress
+    await page.mouse.move(x, y)
+  })
+
+  // Click and hold frames
+  if (step.target) {
+    await page.click(step.target).catch(() => {})
+  }
+  await captureFrames(ctx, holdDuration, async () => {})
+}
+
 export async function executeAction(ctx: ActionContext): Promise<void> {
   // Inject annotation if present
   if (ctx.step.annotation) {
@@ -271,6 +302,8 @@ export async function executeAction(ctx: ActionContext): Promise<void> {
       return actionPan(ctx)
     case 'cursor-move':
       return actionCursorMove(ctx)
+    case 'click':
+      return actionClick(ctx)
     default:
       return actionWait(ctx)
   }
