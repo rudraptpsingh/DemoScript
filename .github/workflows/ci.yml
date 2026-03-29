@@ -1,0 +1,130 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck (Next.js)
+        run: npm run typecheck
+
+      - name: Typecheck (Package)
+        run: npm run build:pkg
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: lint-and-typecheck
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build Next.js app
+        run: npm run build
+
+      - name: Build npm package
+        run: npm run build:pkg
+
+      - name: Verify package contents
+        run: npm pack --dry-run
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: demoscript-package
+          path: dist/
+          retention-days: 7
+
+  test-package:
+    name: Test Package
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Install Playwright Chromium
+        run: npx playwright install chromium --with-deps
+
+      - name: Build package
+        run: npm run build:pkg
+
+      - name: Test CLI --help
+        run: node dist/pkg/cli.js --help
+
+      - name: Start dev server
+        run: |
+          npm run dev -- --port 3099 &
+          npx wait-on http://localhost:3099/test-site.html --timeout 30000
+
+      - name: Test CLI capture
+        run: |
+          OUTPUT=$(node dist/pkg/cli.js capture http://localhost:3099/test-site.html)
+          echo "$OUTPUT"
+          echo "$OUTPUT" | grep -q "Found.*elements"
+
+      - name: Test CLI render
+        run: |
+          node dist/pkg/cli.js render --script examples/demo.json -o ./test-output --fps 12 --width 640 --height 360
+          ls -la test-output/*.mp4
+          FILE_SIZE=$(stat -c%s test-output/*.mp4)
+          echo "Video size: $FILE_SIZE bytes"
+          [ "$FILE_SIZE" -gt 10000 ]
+
+      - name: Test programmatic API
+        run: |
+          node -e "
+          const { render, capture } = require('./dist/pkg/index');
+          async function main() {
+            const cap = await capture('http://localhost:3099/test-site.html');
+            if (cap.elements.length < 3) throw new Error('Too few elements: ' + cap.elements.length);
+            console.log('capture(): ' + cap.elements.length + ' elements');
+
+            const result = await render({
+              url: 'http://localhost:3099/test-site.html',
+              outputDir: './test-output-api',
+              fps: 12,
+              viewport: { width: 640, height: 360 },
+              steps: [
+                { action: 'wait', duration: 0.5 },
+                { action: 'highlight', target: 'h1', duration: 0.5, highlightColor: '#6366F1' },
+              ],
+            });
+            const fs = require('fs');
+            const stat = fs.statSync(result.outputPath);
+            if (stat.size < 1000) throw new Error('Video too small: ' + stat.size);
+            console.log('render(): ' + result.outputPath + ' (' + stat.size + ' bytes)');
+            console.log('All API tests passed');
+          }
+          main().catch(e => { console.error(e); process.exit(1); });
+          "
