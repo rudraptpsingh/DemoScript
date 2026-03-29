@@ -5,16 +5,26 @@ import os from 'os'
 import { nanoid } from 'nanoid'
 import { DemoScript } from '../types'
 import { executeAction, removeAnnotation } from './actions'
-import { encodeFramesToVideo, encodeFramesToGif } from './ffmpeg'
+import { encodeFramesToVideo, encodeFramesToGif, encodeMultipleFormats, MultiFormatResult } from './ffmpeg'
+import type { FormatId } from './formats'
+import { AbortError } from '../watcher'
 
 export interface RenderOptions {
   script: DemoScript
   outputDir: string
   onProgress?: (progress: number, message: string) => void
+  signal?: AbortSignal
+  formats?: FormatId[]
 }
 
-export async function renderScript(options: RenderOptions): Promise<string> {
-  const { script, outputDir, onProgress } = options
+export interface MultiRenderResult {
+  outputs: Partial<Record<FormatId, string>>
+}
+
+export async function renderScript(options: RenderOptions): Promise<string>
+export async function renderScript(options: RenderOptions & { formats: FormatId[] }): Promise<MultiRenderResult>
+export async function renderScript(options: RenderOptions): Promise<string | MultiRenderResult> {
+  const { script, outputDir, onProgress, signal, formats } = options
   const progress = (p: number, msg: string) => onProgress?.(p, msg)
 
   const frameDir = path.join(os.tmpdir(), `demoscript_${nanoid()}`)
@@ -24,6 +34,8 @@ export async function renderScript(options: RenderOptions): Promise<string> {
   let browser: Browser | null = null
 
   try {
+    if (signal?.aborted) throw new AbortError()
+
     progress(2, 'Launching browser...')
 
     browser = await chromium.launch({
@@ -55,6 +67,8 @@ export async function renderScript(options: RenderOptions): Promise<string> {
       `
       document.head?.appendChild(style)
     })
+
+    if (signal?.aborted) throw new AbortError()
 
     progress(5, `Loading ${script.url}...`)
 
@@ -95,6 +109,8 @@ export async function renderScript(options: RenderOptions): Promise<string> {
     const totalSteps = script.steps.length
 
     for (let i = 0; i < script.steps.length; i++) {
+      if (signal?.aborted) throw new AbortError()
+
       const step = script.steps[i]
       const stepProgress = 10 + (i / totalSteps) * 70
       progress(
@@ -117,7 +133,37 @@ export async function renderScript(options: RenderOptions): Promise<string> {
       }
     }
 
-    progress(80, `Captured ${frameCount.value - 1} frames. Encoding video...`)
+    if (signal?.aborted) throw new AbortError()
+
+    const capturedFrames = frameCount.value - 1
+
+    // Multi-format export path
+    if (formats && formats.length > 1) {
+      progress(80, `Captured ${capturedFrames} frames. Encoding ${formats.length} formats...`)
+      const baseOutputPath = path.join(outputDir, `demo_${script.id}`)
+      const results: MultiFormatResult = await encodeMultipleFormats({
+        frameDir,
+        baseOutputPath,
+        fps: script.fps,
+        viewport: script.viewport,
+        formatIds: formats,
+      })
+
+      progress(95, 'Cleaning up...')
+      fs.rmSync(frameDir, { recursive: true, force: true })
+      progress(100, 'Complete!')
+
+      const outputs: Partial<Record<FormatId, string>> = {}
+      for (const [fmtId, result] of Object.entries(results)) {
+        if (result.success && result.outputPath) {
+          outputs[fmtId as FormatId] = result.outputPath
+        }
+      }
+      return { outputs }
+    }
+
+    // Single-format path (existing behavior)
+    progress(80, `Captured ${capturedFrames} frames. Encoding video...`)
 
     const ext =
       script.outputFormat === 'gif'
