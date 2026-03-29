@@ -4,6 +4,10 @@ Generate polished demo videos from any URL. Define scroll, zoom, highlight, and 
 
 No screen recording. No manual clicking. Pure config-to-video.
 
+<p align="center">
+  <img src="docs/demo_readme-demo.gif" alt="DemoScript demo" width="560">
+</p>
+
 ## Install
 
 ```bash
