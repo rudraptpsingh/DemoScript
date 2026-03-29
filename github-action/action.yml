@@ -1,0 +1,59 @@
+name: 'DemoScript'
+description: 'Auto-generate demo videos from a DemoScript JSON file on every push or release'
+author: 'Rudra Pratap Singh'
+
+branding:
+  icon: 'film'
+  color: 'purple'
+
+inputs:
+  script-path:
+    description: 'Path to the demo.json file relative to repository root'
+    required: false
+    default: '.demoscript/demo.json'
+  output-path:
+    description: 'Directory to write output files'
+    required: false
+    default: '.demoscript/output'
+  format:
+    description: 'Output format: mp4, gif, or all'
+    required: false
+    default: 'gif'
+  api-key:
+    description: 'DemoScript cloud API key for cloud rendering (optional, renders locally if not set)'
+    required: false
+    default: ''
+  commit-output:
+    description: 'If true, commits the rendered output back to the repository'
+    required: false
+    default: 'false'
+  commit-message:
+    description: 'Commit message when commit-output is true'
+    required: false
+    default: 'chore: update demo video [skip ci]'
+  open-pr:
+    description: 'If true and commit-output is true, opens a PR instead of direct push'
+    required: false
+    default: 'false'
+  node-version:
+    description: 'Node.js version to use'
+    required: false
+    default: '20'
+  ffmpeg-version:
+    description: 'FFmpeg version (latest is recommended)'
+    required: false
+    default: 'latest'
+
+outputs:
+  output-file:
+    description: 'Path to the primary output file'
+  output-files-json:
+    description: 'JSON string listing all output files'
+  render-duration-seconds:
+    description: 'How long the render took in seconds'
+  committed-sha:
+    description: 'SHA of the commit made, if commit-output was true'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'

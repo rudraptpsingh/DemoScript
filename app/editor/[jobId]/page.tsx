@@ -10,6 +10,8 @@ import {
 } from '@/lib/types'
 import { nanoid } from 'nanoid'
 
+type EditorMode = 'ai' | 'manual'
+
 export default function EditorPage({
   params,
 }: {
@@ -20,16 +22,21 @@ export default function EditorPage({
   const router = useRouter()
   const url = searchParams.get('url') || ''
 
+  const [mode, setMode] = useState<EditorMode>('ai')
   const [capture, setCapture] = useState<PageCapture | null>(null)
   const [loading, setLoading] = useState(true)
   const [steps, setSteps] = useState<Step[]>([])
   const [selectedStep, setSelectedStep] = useState<string | null>(null)
-  const [hoveredElement, setHoveredElement] = useState<CapturedElement | null>(
-    null
-  )
+  const [hoveredElement, setHoveredElement] = useState<CapturedElement | null>(null)
   const [isPickingElement, setIsPickingElement] = useState(false)
   const [outputFormat, setOutputFormat] = useState<'mp4' | 'gif'>('mp4')
   const [error, setError] = useState('')
+
+  // AI Mode state
+  const [aiPrompt, setAiPrompt] = useState('')
+  const [aiGenerating, setAiGenerating] = useState(false)
+  const [aiError, setAiError] = useState('')
+  const [aiGenerated, setAiGenerated] = useState(false)
 
   useEffect(() => {
     if (!url) return
@@ -62,6 +69,33 @@ export default function EditorPage({
       setError(err instanceof Error ? err.message : 'Failed to load page')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function generateWithAI() {
+    if (!aiPrompt.trim() || !url) return
+    setAiGenerating(true)
+    setAiError('')
+
+    try {
+      const res = await fetch('/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url, prompt: aiPrompt }),
+      })
+
+      if (!res.ok) {
+        const data = await res.json()
+        throw new Error(data.error || 'AI generation failed')
+      }
+
+      const data = await res.json()
+      setSteps(data.steps)
+      setAiGenerated(true)
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : 'AI generation failed')
+    } finally {
+      setAiGenerating(false)
     }
   }
 
@@ -189,72 +223,166 @@ export default function EditorPage({
       </header>
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Page Preview + Element Picker */}
-        <div className="flex-1 bg-gray-900 relative overflow-hidden">
-          {capture && (
-            <div
-              className="relative"
-              style={{
-                width: 1280,
-                height: 720,
-                transform: 'scale(0.6)',
-                transformOrigin: 'top left',
-              }}
+        {/* Main content area */}
+        <div className="flex-1 bg-gray-900 relative overflow-hidden flex flex-col">
+          {/* Mode toggle */}
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 flex gap-1 bg-gray-800 rounded-xl p-1">
+            <button
+              onClick={() => setMode('ai')}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                mode === 'ai'
+                  ? 'bg-indigo-600 text-white'
+                  : 'text-gray-400 hover:text-white'
+              }`}
             >
-              <img
-                src={`data:image/jpeg;base64,${capture.screenshotBase64}`}
-                alt="Page preview"
-                style={{ width: 1280, height: 720, display: 'block' }}
-              />
+              AI Mode
+            </button>
+            <button
+              onClick={() => setMode('manual')}
+              className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                mode === 'manual'
+                  ? 'bg-indigo-600 text-white'
+                  : 'text-gray-400 hover:text-white'
+              }`}
+            >
+              Manual
+            </button>
+          </div>
 
-              {isPickingElement &&
-                capture.elements.map((el) => (
-                  <div
-                    key={el.selector}
-                    className="absolute border-2 cursor-pointer transition-all"
-                    style={{
-                      left: el.boundingBox.x,
-                      top: el.boundingBox.y,
-                      width: el.boundingBox.width,
-                      height: el.boundingBox.height,
-                      borderColor:
-                        hoveredElement?.selector === el.selector
-                          ? '#6366F1'
-                          : 'transparent',
-                      background:
-                        hoveredElement?.selector === el.selector
-                          ? '#6366F122'
-                          : 'transparent',
-                      zIndex: 10,
-                    }}
-                    onMouseEnter={() => setHoveredElement(el)}
-                    onMouseLeave={() => setHoveredElement(null)}
-                    onClick={() => addStep(el)}
-                  >
-                    {hoveredElement?.selector === el.selector && (
-                      <div className="absolute -top-8 left-0 bg-indigo-600 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
-                        {el.label} · {el.selector}
-                      </div>
-                    )}
+          {/* AI Mode panel */}
+          {mode === 'ai' && (
+            <div className="flex flex-col items-center justify-center flex-1 px-8">
+              <div className="w-full max-w-xl">
+                <h2 className="text-white text-xl font-semibold mb-2 text-center">
+                  Describe your demo
+                </h2>
+                <p className="text-gray-500 text-sm text-center mb-6">
+                  Tell the AI what to show and it will generate the script automatically.
+                </p>
+                <textarea
+                  value={aiPrompt}
+                  onChange={(e) => setAiPrompt(e.target.value)}
+                  placeholder="e.g. Show the homepage hero, zoom into the headline, scroll to pricing and highlight the Pro plan, then show the sign up button"
+                  rows={5}
+                  maxLength={1000}
+                  className="w-full bg-gray-800 text-white text-sm px-4 py-3 rounded-xl border border-gray-700 placeholder-gray-600 resize-none focus:outline-none focus:border-indigo-500"
+                />
+                <div className="flex justify-between items-center mt-2 mb-4">
+                  <span className="text-gray-600 text-xs">{aiPrompt.length}/1000 characters</span>
+                  {aiGenerated && (
+                    <button
+                      onClick={() => setMode('manual')}
+                      className="text-indigo-400 text-xs hover:underline"
+                    >
+                      Edit manually
+                    </button>
+                  )}
+                </div>
+                {aiError && (
+                  <p className="text-red-400 text-sm mb-3">{aiError}</p>
+                )}
+                <button
+                  onClick={generateWithAI}
+                  disabled={!aiPrompt.trim() || aiGenerating}
+                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white font-semibold rounded-xl transition-colors"
+                >
+                  {aiGenerating ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      AI is analyzing your page and writing the script...
+                    </span>
+                  ) : (
+                    'Generate Script'
+                  )}
+                </button>
+                {aiGenerated && steps.length > 0 && (
+                  <div className="mt-4 p-4 bg-gray-800 rounded-xl">
+                    <p className="text-green-400 text-sm font-medium mb-2">
+                      Generated {steps.length} steps ({totalDuration.toFixed(1)}s total)
+                    </p>
+                    <ul className="space-y-1">
+                      {steps.slice(0, 5).map((s, i) => (
+                        <li key={s.id} className="text-gray-400 text-xs">
+                          {i + 1}. {s.action} {s.target ? `on ${s.target}` : ''} {s.annotation ? `— "${s.annotation}"` : ''}
+                        </li>
+                      ))}
+                      {steps.length > 5 && (
+                        <li className="text-gray-500 text-xs">...and {steps.length - 5} more</li>
+                      )}
+                    </ul>
                   </div>
-                ))}
+                )}
+              </div>
             </div>
           )}
 
-          <div className="absolute bottom-6 left-1/2 -translate-x-1/2">
-            <button
-              onClick={() => setIsPickingElement(!isPickingElement)}
-              className={`px-5 py-3 rounded-xl font-semibold transition-all ${
-                isPickingElement
-                  ? 'bg-indigo-600 text-white ring-2 ring-indigo-400'
-                  : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-              }`}
-            >
-              {isPickingElement
-                ? 'Click an element to add step'
-                : '+ Add Step'}
-            </button>
-          </div>
+          {/* Manual Mode: page preview + element picker */}
+          {mode === 'manual' && capture && (
+            <>
+              <div
+                className="relative mt-12"
+                style={{
+                  width: 1280,
+                  height: 720,
+                  transform: 'scale(0.6)',
+                  transformOrigin: 'top left',
+                }}
+              >
+                <img
+                  src={`data:image/jpeg;base64,${capture.screenshotBase64}`}
+                  alt="Page preview"
+                  style={{ width: 1280, height: 720, display: 'block' }}
+                />
+
+                {isPickingElement &&
+                  capture.elements.map((el) => (
+                    <div
+                      key={el.selector}
+                      className="absolute border-2 cursor-pointer transition-all"
+                      style={{
+                        left: el.boundingBox.x,
+                        top: el.boundingBox.y,
+                        width: el.boundingBox.width,
+                        height: el.boundingBox.height,
+                        borderColor:
+                          hoveredElement?.selector === el.selector
+                            ? '#6366F1'
+                            : 'transparent',
+                        background:
+                          hoveredElement?.selector === el.selector
+                            ? '#6366F122'
+                            : 'transparent',
+                        zIndex: 10,
+                      }}
+                      onMouseEnter={() => setHoveredElement(el)}
+                      onMouseLeave={() => setHoveredElement(null)}
+                      onClick={() => addStep(el)}
+                    >
+                      {hoveredElement?.selector === el.selector && (
+                        <div className="absolute -top-8 left-0 bg-indigo-600 text-white text-xs px-2 py-1 rounded whitespace-nowrap">
+                          {el.label} · {el.selector}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+              </div>
+
+              <div className="absolute bottom-6 left-1/2 -translate-x-1/2">
+                <button
+                  onClick={() => setIsPickingElement(!isPickingElement)}
+                  className={`px-5 py-3 rounded-xl font-semibold transition-all ${
+                    isPickingElement
+                      ? 'bg-indigo-600 text-white ring-2 ring-indigo-400'
+                      : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                  }`}
+                >
+                  {isPickingElement
+                    ? 'Click an element to add step'
+                    : '+ Add Step'}
+                </button>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Timeline Sidebar */}
@@ -343,6 +471,7 @@ function StepCard({
             </p>
             <p className="text-gray-500 text-xs">
               {ACTION_LABELS[step.action]} · {step.duration}s
+              {step.annotation && ` · "${step.annotation}"`}
             </p>
           </div>
         </div>
@@ -401,6 +530,7 @@ function StepCard({
                 <option value="highlight">Highlight</option>
                 <option value="pan">Pan</option>
                 <option value="cursor-move">Move cursor</option>
+                <option value="click">Click</option>
               </select>
             </div>
             <div>

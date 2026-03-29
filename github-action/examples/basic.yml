@@ -1,0 +1,24 @@
+name: Render Demo Video
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  render-demo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Render demo GIF
+        uses: rudraptpsingh/demoscript@v1
+        with:
+          script-path: .demoscript/demo.json
+          format: gif
+
+      - name: Upload demo as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-output
+          path: .demoscript/output/

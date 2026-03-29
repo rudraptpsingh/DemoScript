@@ -44,10 +44,15 @@
     "start": "next start",
     "lint": "eslint",
     "build:pkg": "tsc -p tsconfig.pkg.json",
+    "build:action": "cd github-action && npm install && npx ncc build src/main.ts -o dist --license licenses.txt",
     "typecheck": "tsc --noEmit",
+    "test": "npx tsx --test tests/watch-mode.test.ts tests/multi-format.test.ts tests/github-action.test.ts tests/ai-generator.test.ts tests/cloud-client.test.ts tests/unit-coverage.test.ts tests/edge-cases.test.ts",
+    "test:e2e": "npx tsx --test tests/e2e.test.ts",
+    "test:all": "npx tsx --test tests/watch-mode.test.ts tests/multi-format.test.ts tests/github-action.test.ts tests/ai-generator.test.ts tests/cloud-client.test.ts tests/unit-coverage.test.ts tests/edge-cases.test.ts tests/e2e.test.ts",
     "prepublishOnly": "npm run build:pkg"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.32.1",
     "@ffmpeg-installer/ffmpeg": "^1.1.0",
     "fluent-ffmpeg": "^2.1.3",
     "nanoid": "^5.1.7",
@@ -68,6 +73,7 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5",
     "wait-on": "^9.0.4"
   },

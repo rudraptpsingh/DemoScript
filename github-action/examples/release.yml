@@ -1,0 +1,26 @@
+name: Render Release Assets
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  render-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Render all formats
+        id: render
+        uses: rudraptpsingh/demoscript@v1
+        with:
+          script-path: .demoscript/demo.json
+          output-path: .demoscript/output
+          format: all
+
+      - name: Upload all formats as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-demo-assets
+          path: .demoscript/output/

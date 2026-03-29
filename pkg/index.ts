@@ -2,7 +2,7 @@
  * DemoScript — Programmatic API
  *
  * Usage:
- *   import { render, capture } from 'demoscript'
+ *   import { render, capture, generate, createCloudClient } from 'demoscript'
  *
  *   const video = await render({
  *     url: 'https://your-site.com',
@@ -20,10 +20,15 @@ import path from 'path'
 import { renderScript, RenderOptions } from '../lib/renderer/engine'
 import { ActionType, Step, DemoScript, PageCapture, CapturedElement } from '../lib/types'
 import { chromium } from 'playwright'
+import { generateScript, GenerateOptions, GenerateResult } from '../lib/ai/scriptGenerator'
+import { createCloudClient, DemoScriptCloudClient, CloudClientOptions, AuthStatus, CloudRenderResult } from '../lib/api/client'
 
 // Re-export types for consumers
 export type { ActionType, Step, DemoScript, PageCapture, CapturedElement, RenderOptions }
 export type { EncodeOptions } from '../lib/renderer/ffmpeg'
+export type { GenerateOptions, GenerateResult }
+export type { CloudClientOptions, AuthStatus, CloudRenderResult }
+export { createCloudClient, DemoScriptCloudClient }
 
 export interface RenderInput {
   /** URL of the page to record */
@@ -112,7 +117,7 @@ export async function render(input: RenderInput): Promise<RenderResult> {
     script,
     outputDir,
     onProgress,
-  })
+  }) as string
 
   const totalDuration = steps.reduce((sum, s) => sum + s.duration, 0)
   const frameCount = Math.round(totalDuration * fps)
@@ -198,4 +203,11 @@ export async function capture(
   } finally {
     await browser.close()
   }
+}
+
+/**
+ * Generate a demo script using AI from a URL and a natural language prompt.
+ */
+export async function generate(options: GenerateOptions): Promise<GenerateResult> {
+  return generateScript(options)
 }
