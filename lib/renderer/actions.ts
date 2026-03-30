@@ -1,6 +1,11 @@
 import { Page } from 'playwright'
 import { Step } from '../types'
 
+export interface SharedState {
+  cursorX: number
+  cursorY: number
+}
+
 export interface ActionContext {
   page: Page
   step: Step
@@ -8,6 +13,7 @@ export interface ActionContext {
   fps: number
   frameCount: { value: number }
   viewport: { width: number; height: number }
+  shared: SharedState
 }
 
 async function captureFrames(
@@ -51,12 +57,12 @@ function applyEasing(t: number, easing: string): number {
 export async function actionScrollTo(ctx: ActionContext): Promise<void> {
   const { page, step } = ctx
 
-  const targetY = await page.evaluate((selector) => {
+  const targetY = await page.evaluate(({ selector, offset }) => {
     const el = selector ? document.querySelector(selector) : null
     if (!el) return 0
     const rect = el.getBoundingClientRect()
-    return window.scrollY + rect.top - 80
-  }, step.target)
+    return window.scrollY + rect.top - (offset ?? 80)
+  }, { selector: step.target, offset: step.scrollOffset })
 
   const startScrollY = await page.evaluate(() => window.scrollY)
   const endScrollY = targetY
@@ -97,16 +103,34 @@ export async function actionZoomIn(ctx: ActionContext): Promise<void> {
 }
 
 export async function actionZoomOut(ctx: ActionContext): Promise<void> {
-  const { page, step } = ctx
-  const startZoom = step.zoom || 2.0
+  const { page } = ctx
+
+  // Read the actual current zoom from the page — don't trust step.zoom
+  const startZoom = await page.evaluate(() => {
+    const body = document.body as HTMLElement
+    const match = body.style.transform.match(/scale\(([^)]+)\)/)
+    return match ? parseFloat(match[1]) : 1.0
+  })
+
+  // Already at 1x — nothing to do, just capture static frames
+  if (startZoom <= 1.0) {
+    await captureFrames(ctx, ctx.step.duration, async () => {})
+    return
+  }
+
   const endZoom = 1.0
 
-  await captureFrames(ctx, step.duration, async (progress) => {
+  await captureFrames(ctx, ctx.step.duration, async (progress) => {
     const currentZoom = startZoom + (endZoom - startZoom) * progress
     await page.evaluate((zoom) => {
       const body = document.body as HTMLElement
-      body.style.transform = zoom === 1.0 ? '' : `scale(${zoom})`
-      body.style.transition = 'none'
+      if (zoom <= 1.0) {
+        body.style.transform = ''
+        body.style.transformOrigin = ''
+      } else {
+        body.style.transform = `scale(${zoom})`
+        body.style.transition = 'none'
+      }
     }, currentZoom)
   })
 }
@@ -146,8 +170,9 @@ export async function actionHighlight(ctx: ActionContext): Promise<void> {
 
   await captureFrames(ctx, step.duration, async (progress) => {
     let opacity = 1
-    if (progress < 0.2) opacity = progress / 0.2
-    else if (progress > 0.8) opacity = (1 - progress) / 0.2
+    if (progress < 0.15) opacity = progress / 0.15
+    // fade out only in the last 15% but never reach 0 — removal happens after loop
+    else if (progress > 0.85) opacity = Math.max(0.15, (1 - progress) / 0.15)
 
     await page.evaluate((op) => {
       const el = document.getElementById('__demoscript_highlight')
@@ -190,24 +215,54 @@ export async function actionPan(ctx: ActionContext): Promise<void> {
   })
 }
 
+async function injectCursor(page: Page, x: number, y: number): Promise<void> {
+  await page.evaluate(({ x, y }) => {
+    let cursor = document.getElementById('__demoscript_cursor') as HTMLElement | null
+    if (!cursor) {
+      cursor = document.createElement('div')
+      cursor.id = '__demoscript_cursor'
+      cursor.innerHTML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M5 2L19 12.5L12 13.5L8.5 20L5 2Z" fill="white" stroke="#1a1a1a" stroke-width="1.5" stroke-linejoin="round"/>
+      </svg>`
+      cursor.style.cssText = `
+        position: fixed;
+        pointer-events: none;
+        z-index: 2147483647;
+        top: 0; left: 0;
+        transform-origin: 4px 2px;
+        filter: drop-shadow(0 1px 3px rgba(0,0,0,0.4));
+      `
+      document.body.appendChild(cursor)
+    }
+    cursor.style.transform = `translate(${x}px, ${y}px)`
+    cursor.style.display = 'block'
+  }, { x, y })
+}
+
 export async function actionCursorMove(ctx: ActionContext): Promise<void> {
-  const { page, step, viewport } = ctx
+  const { page, step, shared } = ctx
 
   const targetPos = await page.evaluate((selector) => {
     const el = selector ? document.querySelector(selector) : null
-    if (!el) return { x: 100, y: 100 }
+    if (!el) return null
     const rect = el.getBoundingClientRect()
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
   }, step.target)
 
-  const startX = viewport.width / 2
-  const startY = viewport.height / 2
+  if (!targetPos) return
+
+  const startX = shared.cursorX
+  const startY = shared.cursorY
 
   await captureFrames(ctx, step.duration, async (progress) => {
     const x = startX + (targetPos.x - startX) * progress
     const y = startY + (targetPos.y - startY) * progress
+    await injectCursor(page, x, y)
     await page.mouse.move(x, y)
   })
+
+  shared.cursorX = targetPos.x
+  shared.cursorY = targetPos.y
 }
 
 export async function injectAnnotation(
@@ -251,34 +306,122 @@ export async function removeAnnotation(page: Page): Promise<void> {
 }
 
 export async function actionClick(ctx: ActionContext): Promise<void> {
-  const { page, step, viewport } = ctx
+  const { page, step, shared } = ctx
 
-  // Move cursor to element first
   const targetPos = await page.evaluate((selector) => {
     const el = selector ? document.querySelector(selector) : null
-    if (!el) return { x: 100, y: 100 }
+    if (!el) return null
     const rect = el.getBoundingClientRect()
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
   }, step.target)
 
-  const startX = viewport.width / 2
-  const startY = viewport.height / 2
+  if (!targetPos) return
 
-  // Use half the duration for moving, half for the click hold
+  const startX = shared.cursorX
+  const startY = shared.cursorY
+
+  // 60% of duration: move cursor to target
   const moveDuration = step.duration * 0.6
   const holdDuration = step.duration * 0.4
 
-  await captureFrames(ctx, moveDuration, async (progress) => {
+  await captureFrames({ ...ctx, step: { ...ctx.step, duration: moveDuration } }, moveDuration, async (progress) => {
     const x = startX + (targetPos.x - startX) * progress
     const y = startY + (targetPos.y - startY) * progress
+    await injectCursor(page, x, y)
     await page.mouse.move(x, y)
   })
 
-  // Click and hold frames
+  shared.cursorX = targetPos.x
+  shared.cursorY = targetPos.y
+
+  // Click
   if (step.target) {
     await page.click(step.target).catch(() => {})
   }
-  await captureFrames(ctx, holdDuration, async () => {})
+
+  // 40% of duration: hold on the clicked element
+  await captureFrames({ ...ctx, step: { ...ctx.step, duration: holdDuration } }, holdDuration, async () => {
+    await injectCursor(page, targetPos.x, targetPos.y)
+  })
+}
+
+export async function actionType(ctx: ActionContext): Promise<void> {
+  const { page, step, shared } = ctx
+  const text = step.typeText || ''
+  if (!text || !step.target) return
+
+  // Move cursor to the field first
+  const targetPos = await page.evaluate((selector) => {
+    const el = selector ? document.querySelector(selector) : null
+    if (!el) return null
+    const rect = el.getBoundingClientRect()
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+  }, step.target)
+
+  if (targetPos) {
+    await injectCursor(page, targetPos.x, targetPos.y)
+    await page.mouse.move(targetPos.x, targetPos.y)
+    shared.cursorX = targetPos.x
+    shared.cursorY = targetPos.y
+  }
+
+  // Click to focus
+  await page.click(step.target).catch(() => {})
+  // Clear existing value
+  await page.evaluate((sel) => {
+    const el = document.querySelector(sel!) as HTMLInputElement | HTMLTextAreaElement | null
+    if (el && 'value' in el) el.value = ''
+  }, step.target)
+
+  await captureFrames(ctx, step.duration, async (progress) => {
+    const charCount = Math.round(progress * text.length)
+    const partial = text.slice(0, charCount)
+    await page.evaluate(({ sel, val }) => {
+      const el = document.querySelector(sel!) as HTMLInputElement | HTMLTextAreaElement | null
+      if (el && 'value' in el) {
+        el.value = val
+        el.dispatchEvent(new Event('input', { bubbles: true }))
+      }
+    }, { sel: step.target!, val: partial })
+    if (targetPos) await injectCursor(page, targetPos.x, targetPos.y)
+  })
+}
+
+export async function actionHover(ctx: ActionContext): Promise<void> {
+  const { page, step, shared } = ctx
+
+  const targetPos = await page.evaluate((selector) => {
+    const el = selector ? document.querySelector(selector) : null
+    if (!el) return null
+    const rect = el.getBoundingClientRect()
+    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+  }, step.target)
+
+  if (!targetPos) return
+
+  const startX = shared.cursorX
+  const startY = shared.cursorY
+
+  // Move to element over 40% of duration, then hold the hover for 60%
+  const moveDuration = step.duration * 0.4
+  const holdDuration = step.duration * 0.6
+
+  await captureFrames({ ...ctx, step: { ...ctx.step, duration: moveDuration } }, moveDuration, async (progress) => {
+    const x = startX + (targetPos.x - startX) * progress
+    const y = startY + (targetPos.y - startY) * progress
+    await injectCursor(page, x, y)
+    await page.mouse.move(x, y)
+  })
+
+  shared.cursorX = targetPos.x
+  shared.cursorY = targetPos.y
+
+  // Trigger hover state via mouse move at target
+  await page.mouse.move(targetPos.x, targetPos.y)
+
+  await captureFrames({ ...ctx, step: { ...ctx.step, duration: holdDuration } }, holdDuration, async () => {
+    await injectCursor(page, targetPos.x, targetPos.y)
+  })
 }
 
 export async function executeAction(ctx: ActionContext): Promise<void> {
@@ -304,6 +447,10 @@ export async function executeAction(ctx: ActionContext): Promise<void> {
       return actionCursorMove(ctx)
     case 'click':
       return actionClick(ctx)
+    case 'type':
+      return actionType(ctx)
+    case 'hover':
+      return actionHover(ctx)
     default:
       return actionWait(ctx)
   }

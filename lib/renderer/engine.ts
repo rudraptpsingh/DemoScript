@@ -4,7 +4,7 @@ import fs from 'fs'
 import os from 'os'
 import { nanoid } from 'nanoid'
 import { DemoScript } from '../types'
-import { executeAction, removeAnnotation } from './actions'
+import { executeAction, removeAnnotation, SharedState } from './actions'
 import { encodeFramesToVideo, encodeFramesToGif, encodeMultipleFormats, MultiFormatResult } from './ffmpeg'
 import type { FormatId } from './formats'
 import { AbortError } from '../watcher'
@@ -107,6 +107,10 @@ export async function renderScript(options: RenderOptions): Promise<string | Mul
 
     const frameCount = { value: 1 }
     const totalSteps = script.steps.length
+    const shared: SharedState = {
+      cursorX: script.viewport.width / 2,
+      cursorY: script.viewport.height / 2,
+    }
 
     for (let i = 0; i < script.steps.length; i++) {
       if (signal?.aborted) throw new AbortError()
@@ -125,6 +129,7 @@ export async function renderScript(options: RenderOptions): Promise<string | Mul
         fps: script.fps,
         frameCount,
         viewport: script.viewport,
+        shared,
       })
 
       // Remove annotation after step

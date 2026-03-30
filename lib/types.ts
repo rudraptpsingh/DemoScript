@@ -7,6 +7,8 @@ export type ActionType =
   | 'cursor-move'
   | 'wait'
   | 'click'
+  | 'type'
+  | 'hover'
 
 export interface Step {
   id: string
@@ -20,6 +22,8 @@ export interface Step {
   annotation?: string
   highlightColor?: string
   scrollOffset?: number
+  /** Text to type character-by-character (for type action) */
+  typeText?: string
 }
 
 export interface DemoScript {

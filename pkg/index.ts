@@ -64,6 +64,8 @@ export interface StepInput {
   annotation?: string
   /** Border color for highlight action (default: '#3B82F6') */
   highlightColor?: string
+  /** Text to type character-by-character into target field (for type action) */
+  typeText?: string
 }
 
 export interface RenderResult {
@@ -101,6 +103,7 @@ export async function render(input: RenderInput): Promise<RenderResult> {
     easing: s.easing,
     annotation: s.annotation,
     highlightColor: s.highlightColor,
+    typeText: s.typeText,
   }))
 
   const script: DemoScript = {
