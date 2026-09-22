@@ -1,5 +1,12 @@
 import { Page } from 'playwright'
 import { Step } from '../types'
+import {
+  clearText,
+  fadeOpacity,
+  setTextOpacity,
+  showCaption,
+  showTitleCard,
+} from './overlay'
 
 export interface SharedState {
   cursorX: number
@@ -23,6 +30,7 @@ async function captureFrames(
 ): Promise<void> {
   const totalFrames = Math.max(1, Math.round(durationSeconds * ctx.fps))
 
+  const hasText = Boolean(ctx.step.annotation)
   for (let i = 0; i < totalFrames; i++) {
     const progress = totalFrames === 1 ? 1 : i / (totalFrames - 1)
     const easedProgress = applyEasing(
@@ -31,6 +39,9 @@ async function captureFrames(
     )
 
     await onFrame(easedProgress)
+    // Text fades on the RAW progress, not the eased one: a caption should
+    // appear at a steady rate even while the camera is accelerating.
+    if (hasText) await setTextOpacity(ctx.page, fadeOpacity(progress, durationSeconds))
 
     const frameNumber = String(ctx.frameCount.value).padStart(4, '0')
     const framePath = `${ctx.frameDir}/frame_${frameNumber}.png`
@@ -292,7 +303,7 @@ export async function actionHighlight(ctx: ActionContext): Promise<void> {
       z-index: 999999;
       box-shadow: 0 0 0 4px ${color}44;
     `
-      document.body.appendChild(overlay)
+      document.documentElement.appendChild(overlay)
     },
     { selector: step.target, color }
   )
@@ -361,7 +372,7 @@ async function injectCursor(page: Page, x: number, y: number): Promise<void> {
         transform-origin: 4px 2px;
         filter: drop-shadow(0 1px 3px rgba(0,0,0,0.4));
       `
-      document.body.appendChild(cursor)
+      document.documentElement.appendChild(cursor)
     }
     cursor.style.transform = `translate(${x}px, ${y}px)`
     cursor.style.display = 'block'
@@ -394,44 +405,38 @@ export async function actionCursorMove(ctx: ActionContext): Promise<void> {
   shared.cursorY = targetPos.y
 }
 
-export async function injectAnnotation(
-  page: Page,
-  text: string
-): Promise<void> {
-  await page.evaluate((annotationText) => {
-    const existing = document.getElementById('__demoscript_annotation')
-    if (existing) existing.remove()
-
-    const el = document.createElement('div')
-    el.id = '__demoscript_annotation'
-    el.textContent = annotationText
-    el.style.cssText = `
-      position: fixed;
-      bottom: 32px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: rgba(0, 0, 0, 0.85);
-      color: white;
-      padding: 12px 24px;
-      border-radius: 8px;
-      font-family: -apple-system, sans-serif;
-      font-size: 16px;
-      font-weight: 500;
-      z-index: 999999;
-      backdrop-filter: blur(8px);
-      border: 1px solid rgba(255,255,255,0.1);
-      max-width: 600px;
-      text-align: center;
-      pointer-events: none;
-    `
-    document.body.appendChild(el)
-  }, text)
+export async function injectAnnotation(ctx: ActionContext): Promise<void> {
+  const { page, step } = ctx
+  const position = step.annotationPosition ?? 'bottom'
+  let anchor: { x: number; y: number; w: number; h: number } | null = null
+  if (position === 'callout' && step.target) {
+    anchor = await page.evaluate((sel) => {
+      const el = document.querySelector(sel)
+      if (!el) return null
+      const r = el.getBoundingClientRect()
+      return { x: r.left, y: r.top, w: r.width, h: r.height }
+    }, step.target)
+  }
+  await showCaption(page, {
+    text: step.annotation as string,
+    position,
+    subtitle: step.subtitle,
+    anchor,
+  })
 }
 
 export async function removeAnnotation(page: Page): Promise<void> {
-  await page.evaluate(() => {
-    document.getElementById('__demoscript_annotation')?.remove()
+  await clearText(page)
+}
+
+/** A full-frame story card. The heading carries the beat; the subtitle, the why. */
+export async function actionTitle(ctx: ActionContext): Promise<void> {
+  await showTitleCard(ctx.page, {
+    text: ctx.step.annotation ?? ctx.step.targetLabel ?? '',
+    subtitle: ctx.step.subtitle,
   })
+  await captureFrames(ctx, ctx.step.duration, async () => {})
+  await clearText(ctx.page)
 }
 
 export async function actionClick(ctx: ActionContext): Promise<void> {
@@ -554,9 +559,10 @@ export async function actionHover(ctx: ActionContext): Promise<void> {
 }
 
 export async function executeAction(ctx: ActionContext): Promise<void> {
-  // Inject annotation if present
-  if (ctx.step.annotation) {
-    await injectAnnotation(ctx.page, ctx.step.annotation)
+  // A title card draws its own full-frame text; every other action can carry a
+  // caption over whatever it is doing.
+  if (ctx.step.annotation && ctx.step.action !== 'title') {
+    await injectAnnotation(ctx)
   }
 
   switch (ctx.step.action) {
@@ -580,6 +586,8 @@ export async function executeAction(ctx: ActionContext): Promise<void> {
       return actionType(ctx)
     case 'hover':
       return actionHover(ctx)
+    case 'title':
+      return actionTitle(ctx)
     default:
       return actionWait(ctx)
   }

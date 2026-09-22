@@ -259,6 +259,7 @@ console.log(result.duration)   // 4
 | `highlight` | Colored border around element | `target`, `duration`, `highlightColor` |
 | `pan` | Pan viewport to element | `target`, `duration`, `easing` |
 | `cursor-move` | Animate cursor to element | `target`, `duration` |
+| `title` | Full-frame story card | `annotation` (heading), `subtitle`, `duration` |
 | `click` | Move cursor and click element | `target`, `duration` |
 
 ## Step Options
@@ -269,7 +270,9 @@ console.log(result.duration)   // 4
   target: '#pricing',               // CSS selector (null for whole-page actions)
   duration: 2,                      // Seconds (0.5–5.0)
   easing: 'smooth',                 // optional; see the easing table below
-  annotation: 'Check our pricing',  // Text overlay shown at the bottom
+  annotation: 'Check our pricing',  // On-screen text; the heading on a title card
+  annotationPosition: 'bottom',     // 'bottom' | 'top' | 'center' | 'callout'
+  subtitle: 'Billed yearly',        // Quieter second line
   highlightColor: '#6366F1',        // Border color for highlight (hex)
   zoom: 2.0,                        // Omit on zoom-in to frame the element automatically
 }
@@ -322,6 +325,29 @@ row glide straight from the first component to the second; you only need
 { "action": "zoom-in", "target": "#cta", "duration": 1.2 },
 { "action": "zoom-out", "duration": 1.0 }
 ```
+
+### Text on screen
+
+Any step can carry a caption; `title` gives you a full-frame story card for the
+open and the close.
+
+```json
+{ "action": "title", "duration": 2.2, "annotation": "Cull a wedding in one sitting", "subtitle": "Straight off the card" },
+{ "action": "highlight", "target": ".card.selected", "duration": 1.4, "annotation": "Green: selected", "annotationPosition": "callout" },
+{ "action": "zoom-in", "target": ".card.selected", "duration": 1.6, "annotation": "Select, reject and star as you go", "subtitle": "Tags happen in the same pass" }
+```
+
+`callout` anchors the caption to the step's `target` — under it, or above when
+there is no room — instead of parking everything at the bottom of the frame.
+
+Type is sized as a **share of frame height**, not in fixed pixels: a caption is
+~3.4% of the height (about 29px on an 844px-tall recording), a title-card
+heading ~7.5%, both clamped at each end. The same script stays readable whether
+it renders at 720p for a blog embed or tall for a phone-shaped reel, which a
+fixed 16px caption does not. Text sits inside a 5.5% safe margin, wraps at
+about two-thirds of the frame width to keep lines in the 40–60 character range,
+sits on a scrim rather than relying on a shadow (these overlays land on
+photographs), and fades in and out rather than popping.
 
 ---
 

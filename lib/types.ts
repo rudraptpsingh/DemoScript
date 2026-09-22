@@ -9,6 +9,7 @@ export type ActionType =
   | 'click'
   | 'type'
   | 'hover'
+  | 'title'
 
 export interface Step {
   id: string
@@ -28,6 +29,10 @@ export interface Step {
     | 'ease-in-out-quart'
     | 'spring'
   annotation?: string
+  /** Where the caption sits. `callout` anchors it to `target`. */
+  annotationPosition?: 'bottom' | 'top' | 'center' | 'callout'
+  /** Quieter second line, under the caption or title-card heading. */
+  subtitle?: string
   highlightColor?: string
   scrollOffset?: number
   /** Text to type character-by-character (for type action) */

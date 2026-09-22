@@ -75,6 +75,8 @@ export interface StepInput {
     | 'spring'
   /** Text annotation overlay */
   annotation?: string
+  annotationPosition?: 'bottom' | 'top' | 'center' | 'callout'
+  subtitle?: string
   /** Border color for highlight action (default: '#3B82F6') */
   highlightColor?: string
   /** Text to type character-by-character into target field (for type action) */
@@ -116,6 +118,8 @@ export async function render(input: RenderInput): Promise<RenderResult> {
     zoom: s.zoom,
     easing: s.easing,
     annotation: s.annotation,
+    annotationPosition: s.annotationPosition,
+    subtitle: s.subtitle,
     highlightColor: s.highlightColor,
     typeText: s.typeText,
   }))
