@@ -519,6 +519,7 @@ async function main() {
         // Single-format render (existing behavior)
         const input: RenderInput = {
           url,
+          cdpUrl,
           steps,
           viewport: { width, height },
           fps,
@@ -611,6 +612,7 @@ async function main() {
         const engineScript = {
           id: scriptId,
           url,
+          cdpUrl: scriptObj.cdpUrl,
           viewport: { width, height },
           fps,
           outputFormat: format as 'mp4' | 'gif',

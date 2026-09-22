@@ -31,8 +31,13 @@ export type { CloudClientOptions, AuthStatus, CloudRenderResult }
 export { createCloudClient, DemoScriptCloudClient }
 
 export interface RenderInput {
-  /** URL of the page to record */
+  /** URL of the page to record. Not needed with `cdpUrl`. */
   url: string
+  /**
+   * Attach to an already-running browser over CDP (e.g. an Electron app
+   * started with --remote-debugging-port) instead of launching one.
+   */
+  cdpUrl?: string
   /** Ordered list of actions to perform */
   steps: StepInput[]
   /** Viewport size (default: 1280x720) */
@@ -83,6 +88,7 @@ export interface RenderResult {
 export async function render(input: RenderInput): Promise<RenderResult> {
   const {
     url,
+    cdpUrl,
     steps: stepInputs,
     viewport = { width: 1280, height: 720 },
     fps = 24,
@@ -109,6 +115,7 @@ export async function render(input: RenderInput): Promise<RenderResult> {
   const script: DemoScript = {
     id: scriptId,
     url,
+    cdpUrl,
     viewport,
     fps,
     outputFormat,

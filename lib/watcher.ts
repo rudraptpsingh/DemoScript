@@ -98,8 +98,12 @@ export function watchScript(options: WatcherOptions): StopWatcher {
     }
 
     const obj = parsed as Record<string, unknown>
-    if (!obj.url || typeof obj.url !== 'string') {
-      const err = new Error('Script missing required field: "url" (string)')
+    // An attach-mode script records a browser that is already running, so it
+    // names a cdpUrl instead of a page to open. Either one is enough.
+    const hasUrl = typeof obj.url === 'string' && obj.url.length > 0
+    const hasCdpUrl = typeof obj.cdpUrl === 'string' && obj.cdpUrl.length > 0
+    if (!hasUrl && !hasCdpUrl) {
+      const err = new Error('Script missing required field: "url" (string), or "cdpUrl" to attach')
       if (onParseError) onParseError(err)
       else console.error(`\n${err.message}`)
       return
