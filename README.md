@@ -268,7 +268,7 @@ console.log(result.duration)   // 4
   action: 'scroll-to',              // Required: action type
   target: '#pricing',               // CSS selector (null for whole-page actions)
   duration: 2,                      // Seconds (0.5–5.0)
-  easing: 'ease-out-expo',          // see the easing table below
+  easing: 'smooth',                 // optional; see the easing table below
   annotation: 'Check our pricing',  // Text overlay shown at the bottom
   highlightColor: '#6366F1',        // Border color for highlight (hex)
   zoom: 2.0,                        // Omit on zoom-in to frame the element automatically
@@ -277,9 +277,12 @@ console.log(result.duration)   // 4
 
 ### Easing
 
-Camera motion is what makes a render feel hand-made rather than scripted. The
-default is `ease-out-expo`, which covers most of the distance early and glides
-into the final frames the way a real zoom settles.
+Camera motion is what makes a render feel hand-made rather than scripted. Zooms
+default to `smooth`, which starts and ends with zero speed and zero
+acceleration, so the camera neither lurches off the mark nor stops dead. Scale
+is also interpolated in log space, which is how zoom is perceived: a linear
+1x→4x ramp feels fast at the start and sluggish at the end even with a gentle
+curve.
 
 | Easing | Feel | Use for |
 |--------|------|---------|
@@ -287,7 +290,8 @@ into the final frames the way a real zoom settles.
 | `ease-in` | Slow start, fast finish | Leaving a resting state |
 | `ease-out` | Fast start, soft landing | Most moves |
 | `ease-in-out` | Soft at both ends | Long scrolls |
-| `ease-out-expo` | Strong glide into the target | **Default.** Zooms, pans |
+| `smooth` | Starts and ends at rest | **Default for zooms.** Camera moves |
+| `ease-out-expo` | Fast off the mark, long settle | Snappy UI emphasis — avoid for zooms, it lurches |
 | `ease-in-out-quart` | Very soft both ends | Slow, deliberate reveals |
 | `spring` | Slight overshoot, then settles | Short moves under ~0.6s |
 
@@ -302,6 +306,21 @@ tight on a wide panel and too loose on a small control.
 
 ```json
 { "action": "zoom-in", "target": ".pricing-card.featured", "duration": 1.2 }
+```
+
+The camera moves the target to the **centre** of the frame as it zooms, and
+stops short of showing past the page edge. Zooming "in place" instead keeps an
+element wherever it already sits on screen, so a toolbar or side panel stays
+pinned to its edge and half of it is pushed out of frame.
+
+Zooms also start from wherever the camera already is. Two `zoom-in` steps in a
+row glide straight from the first component to the second; you only need
+`zoom-out` when you want to return to the full frame.
+
+```json
+{ "action": "zoom-in", "target": "#hero h1", "duration": 1.2 },
+{ "action": "zoom-in", "target": "#cta", "duration": 1.2 },
+{ "action": "zoom-out", "duration": 1.0 }
 ```
 
 ---

@@ -48,11 +48,15 @@ async function captureFrames(
  * moves in screen-recording tools are cubic or stronger — they cover most of
  * the distance early and glide into the final frames.
  *
- * `ease-out-expo` is the closest of these to how a hand-held zoom settles and
- * is the default for that reason. `spring` adds a small overshoot, which reads
- * as lively on a short move and seasick on a long one — use it under ~0.6s.
+ * `smooth` (smootherstep) is the default for camera moves. It starts and ends
+ * with zero speed AND zero acceleration, so a zoom neither lurches off the
+ * mark nor stops dead. `ease-out-expo` looks lively on paper but covers ~28% of
+ * a 42-frame zoom in its first frame, which reads as a jerk on screen.
+ * `spring` adds a small overshoot: lively on a short move, seasick on a long
+ * one — use it under ~0.6s.
  */
-function applyEasing(t: number, easing: string): number {
+/** @internal exported for tests */
+export function applyEasing(t: number, easing: string): number {
   switch (easing) {
     case 'linear':
       return t
@@ -62,6 +66,8 @@ function applyEasing(t: number, easing: string): number {
       return 1 - Math.pow(1 - t, 3)
     case 'ease-in-out':
       return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+    case 'smooth':
+      return t <= 0 ? 0 : t >= 1 ? 1 : t * t * t * (t * (6 * t - 15) + 10)
     case 'ease-out-expo':
       return t >= 1 ? 1 : 1 - Math.pow(2, -10 * t)
     case 'ease-in-out-quart':
@@ -74,7 +80,7 @@ function applyEasing(t: number, easing: string): number {
       return 1 + Math.pow(2, -9 * t) * Math.sin((t * 10 - 0.75) * c)
     }
     default:
-      return t >= 1 ? 1 : 1 - Math.pow(2, -10 * t)
+      return t <= 0 ? 0 : t >= 1 ? 1 : t * t * t * (t * (6 * t - 15) + 10)
   }
 }
 
@@ -97,115 +103,165 @@ export async function actionScrollTo(ctx: ActionContext): Promise<void> {
   })
 }
 
-export async function actionZoomIn(ctx: ActionContext): Promise<void> {
-  const { page, step, viewport } = ctx
-  const startZoom = 1.0
+/**
+ * The camera: a single translate + scale on <body>, persisted between steps.
+ *
+ * Zooms are camera moves, not isolated effects. Each zoom starts from wherever
+ * the camera already is, so `zoom-in A` then `zoom-in B` glides from one
+ * component to the next instead of cutting back to full frame in between.
+ *
+ * Three things make it read as smooth rather than jerky:
+ *  - scale is interpolated in LOG space. Perceived zoom is proportional to the
+ *    ratio between frames, so a linear 1x->4x ramp spends its first frames
+ *    lurching and its last frames crawling;
+ *  - the default easing starts and ends at rest (see `smooth`);
+ *  - the target moves to the CENTRE of the frame while it grows, rather than
+ *    growing in place. Growing in place pins anything near an edge to that
+ *    edge and pushes half of it off screen.
+ * Translation is clamped so the edge of the page never slides into view.
+ */
+export interface Camera {
+  s: number
+  tx: number
+  ty: number
+}
 
-  // Measure the target in DOCUMENT space, not viewport space.
-  //
-  // The origin used to be expressed as a percentage of the viewport
-  // (`elementCenter.x / viewport.width * 100`). A percentage transform-origin
-  // resolves against the box of the element being transformed — the body —
-  // which on any scrollable page is far taller than the viewport. On a 5000px
-  // body with a 720px viewport, an element in the middle of the screen
-  // produced "50%", i.e. 2500px down the document, and the zoom landed
-  // somewhere else entirely. Pixel offsets in document space have no such
-  // ambiguity, so the zoom lands on the component every time.
-  const target = await page.evaluate((selector) => {
-    const el = selector ? document.querySelector(selector) : null
-    if (!el) {
-      return {
-        originX: window.scrollX + window.innerWidth / 2,
-        originY: window.scrollY + window.innerHeight / 2,
-        width: 0,
-        height: 0,
-        found: false,
-      }
+export interface Stage {
+  vw: number
+  vh: number
+  /** Content box origin and size, measured with the camera removed. */
+  bx: number
+  by: number
+  cw: number
+  ch: number
+  target: { x: number; y: number; w: number; h: number } | null
+  camera: Camera
+}
+
+async function measureStage(page: Page, selector: string | null): Promise<Stage> {
+  return page.evaluate((sel) => {
+    const body = document.body as HTMLElement
+    let camera = { s: 1, tx: 0, ty: 0 }
+    try {
+      if (body.dataset.dsCamera) camera = JSON.parse(body.dataset.dsCamera)
+    } catch {
+      /* fall back to identity */
     }
-    const rect = el.getBoundingClientRect()
+    // Measure the untransformed layout: lift the camera for a synchronous
+    // layout read and put it straight back. No paint happens in between.
+    const prev = body.style.transform
+    body.style.transform = 'none'
+    const b = body.getBoundingClientRect()
+    const el = sel ? document.querySelector(sel) : null
+    const r = el ? el.getBoundingClientRect() : null
+    const doc = document.documentElement
+    body.style.transform = prev
     return {
-      originX: window.scrollX + rect.left + rect.width / 2,
-      originY: window.scrollY + rect.top + rect.height / 2,
-      width: rect.width,
-      height: rect.height,
-      found: true,
+      vw: window.innerWidth,
+      vh: window.innerHeight,
+      bx: b.left,
+      by: b.top,
+      // Apps often size <body> to the window while pages grow with content;
+      // use whichever is larger so clamping covers the real content.
+      cw: Math.max(b.width, doc.scrollWidth),
+      ch: Math.max(b.height, doc.scrollHeight),
+      target:
+        r && r.width > 0 && r.height > 0 ? { x: r.left, y: r.top, w: r.width, h: r.height } : null,
+      camera,
     }
-  }, step.target)
+  }, selector)
+}
 
-  // `zoom` may be a number, or omitted to frame the component automatically.
-  // Auto-fit is what you want when zooming to a real UI component: a fixed 2x
-  // is too tight on a wide panel and too loose on a small control.
-  const PADDING = 1.15
-  const autoFit =
-    target.found && target.width > 0 && target.height > 0
-      ? Math.min(
-          viewport.width / (target.width * PADDING),
-          viewport.height / (target.height * PADDING)
-        )
-      : 2.0
-  // Never zoom OUT in a zoom-in step, and cap the magnification so a tiny
-  // element does not scale into a wall of blurred pixels.
-  const targetZoom = step.zoom || Math.max(1.2, Math.min(autoFit, 4.0))
+/** Translation that puts content point (wx, wy) at the frame centre at scale s, clamped. */
+/** @internal exported for tests */
+export function cameraFor(stage: Stage, s: number, wx: number, wy: number): Camera {
+  const { vw, vh, bx, by, cw, ch } = stage
+  let tx = vw / 2 - bx - (wx - bx) * s
+  let ty = vh / 2 - by - (wy - by) * s
+  // Keep the scaled content covering the frame. Skip an axis whose content is
+  // smaller than the frame at this scale; there is nothing to clamp against.
+  const clamp = (v: number, lo: number, hi: number) =>
+    lo > hi ? v : Math.min(hi, Math.max(lo, v))
+  tx = clamp(tx, vw - bx - cw * s, -bx)
+  ty = clamp(ty, vh - by - ch * s, -by)
+  return { s, tx, ty }
+}
 
-  await captureFrames(ctx, step.duration, async (progress) => {
-    const currentZoom = startZoom + (targetZoom - startZoom) * progress
+/** Content point currently under the frame centre. */
+/** @internal exported for tests */
+export function focusOf(stage: Stage, cam: Camera): { x: number; y: number } {
+  return {
+    x: stage.bx + (stage.vw / 2 - stage.bx - cam.tx) / cam.s,
+    y: stage.by + (stage.vh / 2 - stage.by - cam.ty) / cam.s,
+  }
+}
 
-    await page.evaluate(
-      ({ zoom, ox, oy }) => {
-        const body = document.body as HTMLElement
-        body.style.transformOrigin = `${ox}px ${oy}px`
-        body.style.transform = `scale(${zoom})`
-        body.style.transition = 'none'
-      },
-      { zoom: currentZoom, ox: target.originX, oy: target.originY }
-    )
+async function applyCamera(page: Page, cam: Camera, final: boolean): Promise<void> {
+  await page.evaluate(
+    ({ s, tx, ty, final }) => {
+      const body = document.body as HTMLElement
+      const identity = s <= 1.0001 && Math.abs(tx) < 0.5 && Math.abs(ty) < 0.5
+      if (final && identity) {
+        // Leave the page exactly as it was found.
+        body.style.transform = ''
+        body.style.transformOrigin = ''
+        body.style.transition = ''
+        delete body.dataset.dsCamera
+        return
+      }
+      body.style.transformOrigin = '0 0'
+      body.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`
+      body.style.transition = 'none'
+      body.dataset.dsCamera = JSON.stringify({ s, tx, ty })
+    },
+    { ...cam, final }
+  )
+}
+
+/** Glide the camera from where it is to `to`, one eased frame at a time. */
+async function moveCamera(ctx: ActionContext, stage: Stage, to: Camera): Promise<void> {
+  const from = stage.camera
+  const a = focusOf(stage, from)
+  const b = focusOf(stage, to)
+  const logFrom = Math.log(from.s)
+  const logTo = Math.log(to.s)
+  // Camera moves start and end at rest unless the script asks otherwise.
+  const eased: ActionContext = {
+    ...ctx,
+    step: { ...ctx.step, easing: ctx.step.easing ?? 'smooth' },
+  }
+  await captureFrames(eased, ctx.step.duration, async (p) => {
+    const done = p >= 1
+    // Never below 1x: an overshooting curve must not shrink the page and
+    // reveal its edges mid-move.
+    const s = done ? to.s : Math.max(1, Math.exp(logFrom + (logTo - logFrom) * p))
+    const cam = done ? to : cameraFor(stage, s, a.x + (b.x - a.x) * p, a.y + (b.y - a.y) * p)
+    await applyCamera(ctx.page, cam, done)
   })
 }
 
+export async function actionZoomIn(ctx: ActionContext): Promise<void> {
+  const stage = await measureStage(ctx.page, ctx.step.target)
+  const t = stage.target
+  // `zoom` may be a number, or omitted to frame the component automatically:
+  // a fixed 2x is too tight on a wide panel and too loose on a small control.
+  const PADDING = 1.15
+  const fit = t ? Math.min(stage.vw / (t.w * PADDING), stage.vh / (t.h * PADDING)) : 2.0
+  const s = ctx.step.zoom || Math.max(1.2, Math.min(fit, 4.0))
+  const cx = t ? t.x + t.w / 2 : stage.vw / 2
+  const cy = t ? t.y + t.h / 2 : stage.vh / 2
+  await moveCamera(ctx, stage, cameraFor(stage, s, cx, cy))
+}
+
 export async function actionZoomOut(ctx: ActionContext): Promise<void> {
-  const { page } = ctx
-
-  // Read the actual current zoom from the page — don't trust step.zoom
-  const startZoom = await page.evaluate(() => {
-    const body = document.body as HTMLElement
-    const match = body.style.transform.match(/scale\(([^)]+)\)/)
-    return match ? parseFloat(match[1]) : 1.0
-  })
-
-  // Already at 1x — nothing to do, just capture static frames
-  if (startZoom <= 1.0) {
+  const stage = await measureStage(ctx.page, null)
+  const { s, tx, ty } = stage.camera
+  if (s <= 1.0001 && tx === 0 && ty === 0) {
+    // Already at full frame: hold, so the step still has its duration.
     await captureFrames(ctx, ctx.step.duration, async () => {})
     return
   }
-
-  const endZoom = 1.0
-
-  await captureFrames(ctx, ctx.step.duration, async (progress) => {
-    // Overshooting easings (spring) drive progress past 1, which would take the
-    // scale below 1.0 mid-move. The branch below clears the transform at <= 1,
-    // so an un-clamped overshoot makes the page snap back to full size and then
-    // jump again on the next frame. Clamp so the move only ever settles.
-    const raw = startZoom + (endZoom - startZoom) * progress
-    const currentZoom = Math.max(endZoom, raw)
-    const isFinalFrame = progress >= 1
-
-    await page.evaluate(
-      ({ zoom, done }) => {
-        const body = document.body as HTMLElement
-        if (done && zoom <= 1.0) {
-          // Only tear the transform down once we have actually arrived, so the
-          // page is left exactly as it was found.
-          body.style.transform = ''
-          body.style.transformOrigin = ''
-          body.style.transition = ''
-        } else {
-          body.style.transform = `scale(${zoom})`
-          body.style.transition = 'none'
-        }
-      },
-      { zoom: currentZoom, done: isFinalFrame }
-    )
-  })
+  await moveCamera(ctx, stage, { s: 1, tx: 0, ty: 0 })
 }
 
 export async function actionHighlight(ctx: ActionContext): Promise<void> {

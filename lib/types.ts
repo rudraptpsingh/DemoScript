@@ -18,7 +18,15 @@ export interface Step {
   action: ActionType
   duration: number
   zoom?: number
-  easing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
+  easing?:
+    | 'linear'
+    | 'ease-in'
+    | 'ease-out'
+    | 'ease-in-out'
+    | 'smooth'
+    | 'ease-out-expo'
+    | 'ease-in-out-quart'
+    | 'spring'
   annotation?: string
   highlightColor?: string
   scrollOffset?: number

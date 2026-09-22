@@ -64,7 +64,15 @@ export interface StepInput {
   /** Zoom level for zoom-in/zoom-out (default: 2.0) */
   zoom?: number
   /** Easing function (default: 'ease-in-out') */
-  easing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
+  easing?:
+    | 'linear'
+    | 'ease-in'
+    | 'ease-out'
+    | 'ease-in-out'
+    | 'smooth'
+    | 'ease-out-expo'
+    | 'ease-in-out-quart'
+    | 'spring'
   /** Text annotation overlay */
   annotation?: string
   /** Border color for highlight action (default: '#3B82F6') */
