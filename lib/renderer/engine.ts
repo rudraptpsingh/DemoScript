@@ -1,4 +1,4 @@
-import { chromium, Browser } from 'playwright'
+import { chromium, Browser, Page } from 'playwright'
 import path from 'path'
 import fs from 'fs'
 import os from 'os'
@@ -32,84 +32,133 @@ export async function renderScript(options: RenderOptions): Promise<string | Mul
   fs.mkdirSync(outputDir, { recursive: true })
 
   let browser: Browser | null = null
+  // Attach mode borrows someone else's browser and its real window size.
+  let ownsBrowser = true
 
   try {
     if (signal?.aborted) throw new AbortError()
 
-    progress(2, 'Launching browser...')
+    // Two modes. ATTACH reuses a browser somebody else is driving (an Electron
+    // app, a desktop build, a page behind a long sign-in); LAUNCH opens a clean
+    // headless Chromium at script.url. In attach mode the caller owns the
+    // browser, so we touch as little as possible: no navigation, no resize, no
+    // banner stripping, and no close at the end.
+    let page: Page
 
-    browser = await chromium.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--disable-gpu',
-        '--hide-scrollbars',
-        '--disable-web-security',
-      ],
-    })
+    if (script.cdpUrl) {
+      progress(2, `Connecting to ${script.cdpUrl}...`)
+      browser = await chromium.connectOverCDP(script.cdpUrl)
+      ownsBrowser = false
 
-    const page = await browser.newPage()
-    await page.setViewportSize(script.viewport)
+      const context = browser.contexts()[0]
+      if (!context) {
+        throw new Error(
+          `Connected to ${script.cdpUrl} but it has no browser context. Is the app running?`
+        )
+      }
+      const attached = context.pages()[0]
+      if (!attached) {
+        throw new Error(
+          `Connected to ${script.cdpUrl} but it has no open page. Open the window you want to record first.`
+        )
+      }
+      page = attached
 
-    // Disable animations for deterministic rendering
-    await page.addInitScript(() => {
-      const style = document.createElement('style')
-      style.textContent = `
-        *, *::before, *::after {
-          animation-play-state: paused !important;
-          transition-duration: 0ms !important;
-        }
-      `
-      document.head?.appendChild(style)
-    })
+      // Deliberately NOT pausing animations here. In launch mode that buys
+      // deterministic frames on a static page; in attach mode the app is live
+      // and mid-flow, and freezing its transitions changes what is being
+      // recorded — which is the one thing a capture must not do.
+      progress(10, 'Attached to running page. Starting render...')
+    } else {
+      progress(2, 'Launching browser...')
+
+      browser = await chromium.launch({
+        headless: true,
+        args: [
+          '--no-sandbox',
+          '--disable-setuid-sandbox',
+          '--disable-dev-shm-usage',
+          '--disable-accelerated-2d-canvas',
+          '--no-first-run',
+          '--no-zygote',
+          '--disable-gpu',
+          '--hide-scrollbars',
+          '--disable-web-security',
+        ],
+      })
+
+      page = await browser.newPage()
+      await page.setViewportSize(script.viewport)
+
+      // Disable animations for deterministic rendering
+      await page.addInitScript(() => {
+        const style = document.createElement('style')
+        style.textContent = `
+          *, *::before, *::after {
+            animation-play-state: paused !important;
+            transition-duration: 0ms !important;
+          }
+        `
+        document.head?.appendChild(style)
+      })
+
+      if (signal?.aborted) throw new AbortError()
+
+      progress(5, `Loading ${script.url}...`)
+
+      await page.goto(script.url, {
+        waitUntil: 'load',
+        timeout: 30000,
+      })
+
+      // Wait for fonts, but don't fail if it times out
+      await page
+        .evaluate(() => document.fonts.ready)
+        .catch(() => {})
+
+      // Additional settle time for dynamic content
+      await page.waitForTimeout(1500)
+
+      // Handle cookie banners / GDPR popups
+      await page
+        .evaluate(() => {
+          const cookieBannerSelectors = [
+            '[id*="cookie"]',
+            '[class*="cookie"]',
+            '[id*="gdpr"]',
+            '[class*="consent"]',
+            '[id*="consent"]',
+          ]
+          for (const sel of cookieBannerSelectors) {
+            document.querySelectorAll(sel).forEach((el) => {
+              ;(el as HTMLElement).style.display = 'none'
+            })
+          }
+        })
+        .catch(() => {})
+
+      progress(10, 'Page loaded. Starting render...')
+    }
 
     if (signal?.aborted) throw new AbortError()
 
-    progress(5, `Loading ${script.url}...`)
-
-    await page.goto(script.url, {
-      waitUntil: 'load',
-      timeout: 30000,
-    })
-
-    // Wait for fonts, but don't fail if it times out
-    await page
-      .evaluate(() => document.fonts.ready)
-      .catch(() => {})
-
-    // Additional settle time for dynamic content
-    await page.waitForTimeout(1500)
-
-    // Handle cookie banners / GDPR popups
-    await page
-      .evaluate(() => {
-        const cookieBannerSelectors = [
-          '[id*="cookie"]',
-          '[class*="cookie"]',
-          '[id*="gdpr"]',
-          '[class*="consent"]',
-          '[id*="consent"]',
-        ]
-        for (const sel of cookieBannerSelectors) {
-          document.querySelectorAll(sel).forEach((el) => {
-            ;(el as HTMLElement).style.display = 'none'
-          })
-        }
-      })
-      .catch(() => {})
-
-    progress(10, 'Page loaded. Starting render...')
+    // Frames must be sized by the page we are ACTUALLY capturing. In attach
+    // mode script.viewport describes a window DemoScript never created — using
+    // it clips or letterboxes every frame — so read the live size instead and
+    // fall back to the script only if the page cannot report one.
+    const liveViewport = ownsBrowser
+      ? script.viewport
+      : ((await page
+          .evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }))
+          .catch(() => null)) ??
+        page.viewportSize() ??
+        script.viewport)
 
     const frameCount = { value: 1 }
     const totalSteps = script.steps.length
     const shared: SharedState = {
-      cursorX: script.viewport.width / 2,
-      cursorY: script.viewport.height / 2,
+      cursorX: liveViewport.width / 2,
+      cursorY: liveViewport.height / 2,
     }
 
     for (let i = 0; i < script.steps.length; i++) {
@@ -128,7 +177,7 @@ export async function renderScript(options: RenderOptions): Promise<string | Mul
         frameDir,
         fps: script.fps,
         frameCount,
-        viewport: script.viewport,
+        viewport: liveViewport,
         shared,
       })
 
@@ -151,7 +200,7 @@ export async function renderScript(options: RenderOptions): Promise<string | Mul
         frameDir,
         baseOutputPath,
         fps: script.fps,
-        viewport: script.viewport,
+        viewport: liveViewport,
         formatIds: formats,
       })
 
@@ -184,16 +233,16 @@ export async function renderScript(options: RenderOptions): Promise<string | Mul
         frameDir,
         outputPath,
         fps: script.fps,
-        width: script.viewport.width,
-        height: script.viewport.height,
+        width: liveViewport.width,
+        height: liveViewport.height,
       })
     } else {
       await encodeFramesToVideo({
         frameDir,
         outputPath,
         fps: script.fps,
-        width: script.viewport.width,
-        height: script.viewport.height,
+        width: liveViewport.width,
+        height: liveViewport.height,
       })
     }
 
@@ -203,7 +252,10 @@ export async function renderScript(options: RenderOptions): Promise<string | Mul
 
     return outputPath
   } finally {
-    await browser?.close()
+    // For a launched browser this shuts it down. For an attached one,
+    // close() on a connectOverCDP handle only drops our connection — the
+    // caller's app keeps running, which is the whole contract of attach mode.
+    await browser?.close().catch(() => {})
     if (fs.existsSync(frameDir)) {
       fs.rmSync(frameDir, { recursive: true, force: true })
     }

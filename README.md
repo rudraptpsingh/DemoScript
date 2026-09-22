@@ -254,7 +254,7 @@ console.log(result.duration)   // 4
 |--------|-------------|-------------|
 | `wait` | Hold current frame | `duration`, `annotation` |
 | `scroll-to` | Smooth scroll to element | `target`, `duration`, `easing` |
-| `zoom-in` | Zoom into element | `target`, `duration`, `zoom` (1.5–3.5) |
+| `zoom-in` | Zoom into element | `target`, `duration`, `zoom` (omit to auto-fit the element) |
 | `zoom-out` | Zoom back to normal | `duration` |
 | `highlight` | Colored border around element | `target`, `duration`, `highlightColor` |
 | `pan` | Pan viewport to element | `target`, `duration`, `easing` |
@@ -268,12 +268,78 @@ console.log(result.duration)   // 4
   action: 'scroll-to',              // Required: action type
   target: '#pricing',               // CSS selector (null for whole-page actions)
   duration: 2,                      // Seconds (0.5–5.0)
-  easing: 'ease-in-out',            // 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
+  easing: 'ease-out-expo',          // see the easing table below
   annotation: 'Check our pricing',  // Text overlay shown at the bottom
   highlightColor: '#6366F1',        // Border color for highlight (hex)
-  zoom: 2.0,                        // Magnification level for zoom-in/zoom-out
+  zoom: 2.0,                        // Omit on zoom-in to frame the element automatically
 }
 ```
+
+### Easing
+
+Camera motion is what makes a render feel hand-made rather than scripted. The
+default is `ease-out-expo`, which covers most of the distance early and glides
+into the final frames the way a real zoom settles.
+
+| Easing | Feel | Use for |
+|--------|------|---------|
+| `linear` | Constant speed | Mechanical motion, progress bars |
+| `ease-in` | Slow start, fast finish | Leaving a resting state |
+| `ease-out` | Fast start, soft landing | Most moves |
+| `ease-in-out` | Soft at both ends | Long scrolls |
+| `ease-out-expo` | Strong glide into the target | **Default.** Zooms, pans |
+| `ease-in-out-quart` | Very soft both ends | Slow, deliberate reveals |
+| `spring` | Slight overshoot, then settles | Short moves under ~0.6s |
+
+`spring` reads as lively on a short step and seasick on a long one — keep it brief.
+
+### Zooming to a component
+
+Leave `zoom` out of a `zoom-in` step and DemoScript measures the element and
+picks a magnification that frames it with a small margin, capped at 4x. That is
+usually what you want when zooming to a real UI component: a fixed `2.0` is too
+tight on a wide panel and too loose on a small control.
+
+```json
+{ "action": "zoom-in", "target": ".pricing-card.featured", "duration": 1.2 }
+```
+
+---
+
+## Recording an app, not a page
+
+`--connect` attaches to a browser that is **already running** over the Chrome
+DevTools Protocol instead of launching a fresh headless one. This is how you
+record something that is not a plain URL: an Electron app, a desktop build, or
+a page that took a long sign-in to reach.
+
+Start your app with remote debugging enabled:
+
+```bash
+# Electron
+electron . --remote-debugging-port=9222
+```
+
+```bash
+# Chrome / Chromium
+chrome --remote-debugging-port=9222
+```
+
+Then point a render at it:
+
+```bash
+npx demoscript render --script demo.json --connect http://127.0.0.1:9222
+```
+
+In attach mode DemoScript treats the browser as borrowed: it does **not**
+navigate, resize, strip cookie banners, pause animations, or close the app when
+the render finishes. `url` and `viewport` in your script are ignored — frames
+are sized from the live window. Everything else (zoom, highlight, pan,
+annotations) works exactly as it does on a page.
+
+This also composes with a test harness: drive the app to the state you want
+with Playwright or your own script, leave it open, and let DemoScript do the
+camera work.
 
 ---
 

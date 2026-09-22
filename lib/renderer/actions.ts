@@ -39,18 +39,42 @@ async function captureFrames(
   }
 }
 
+/**
+ * Easing curves for camera motion.
+ *
+ * The original set was quadratic throughout, which is the main reason renders
+ * read as mechanical: a quadratic ease-out still arrives at the target with
+ * noticeable speed, so a zoom appears to stop dead rather than settle. Camera
+ * moves in screen-recording tools are cubic or stronger — they cover most of
+ * the distance early and glide into the final frames.
+ *
+ * `ease-out-expo` is the closest of these to how a hand-held zoom settles and
+ * is the default for that reason. `spring` adds a small overshoot, which reads
+ * as lively on a short move and seasick on a long one — use it under ~0.6s.
+ */
 function applyEasing(t: number, easing: string): number {
   switch (easing) {
     case 'linear':
       return t
     case 'ease-in':
-      return t * t
+      return t * t * t
     case 'ease-out':
-      return t * (2 - t)
+      return 1 - Math.pow(1 - t, 3)
     case 'ease-in-out':
-      return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2
+    case 'ease-out-expo':
+      return t >= 1 ? 1 : 1 - Math.pow(2, -10 * t)
+    case 'ease-in-out-quart':
+      return t < 0.5 ? 8 * t * t * t * t : 1 - Math.pow(-2 * t + 2, 4) / 2
+    case 'spring': {
+      // Damped oscillation, clamped so a frame can never render past the end
+      // state — an overshoot that never resolves looks like a glitch.
+      if (t >= 1) return 1
+      const c = 2 * Math.PI / 3
+      return 1 + Math.pow(2, -9 * t) * Math.sin((t * 10 - 0.75) * c)
+    }
     default:
-      return t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t
+      return t >= 1 ? 1 : 1 - Math.pow(2, -10 * t)
   }
 }
 
@@ -75,29 +99,65 @@ export async function actionScrollTo(ctx: ActionContext): Promise<void> {
 
 export async function actionZoomIn(ctx: ActionContext): Promise<void> {
   const { page, step, viewport } = ctx
-  const targetZoom = step.zoom || 2.0
   const startZoom = 1.0
 
-  const elementCenter = await page.evaluate((selector) => {
+  // Measure the target in DOCUMENT space, not viewport space.
+  //
+  // The origin used to be expressed as a percentage of the viewport
+  // (`elementCenter.x / viewport.width * 100`). A percentage transform-origin
+  // resolves against the box of the element being transformed — the body —
+  // which on any scrollable page is far taller than the viewport. On a 5000px
+  // body with a 720px viewport, an element in the middle of the screen
+  // produced "50%", i.e. 2500px down the document, and the zoom landed
+  // somewhere else entirely. Pixel offsets in document space have no such
+  // ambiguity, so the zoom lands on the component every time.
+  const target = await page.evaluate((selector) => {
     const el = selector ? document.querySelector(selector) : null
-    if (!el) return { x: window.innerWidth / 2, y: window.innerHeight / 2 }
+    if (!el) {
+      return {
+        originX: window.scrollX + window.innerWidth / 2,
+        originY: window.scrollY + window.innerHeight / 2,
+        width: 0,
+        height: 0,
+        found: false,
+      }
+    }
     const rect = el.getBoundingClientRect()
-    return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
+    return {
+      originX: window.scrollX + rect.left + rect.width / 2,
+      originY: window.scrollY + rect.top + rect.height / 2,
+      width: rect.width,
+      height: rect.height,
+      found: true,
+    }
   }, step.target)
+
+  // `zoom` may be a number, or omitted to frame the component automatically.
+  // Auto-fit is what you want when zooming to a real UI component: a fixed 2x
+  // is too tight on a wide panel and too loose on a small control.
+  const PADDING = 1.15
+  const autoFit =
+    target.found && target.width > 0 && target.height > 0
+      ? Math.min(
+          viewport.width / (target.width * PADDING),
+          viewport.height / (target.height * PADDING)
+        )
+      : 2.0
+  // Never zoom OUT in a zoom-in step, and cap the magnification so a tiny
+  // element does not scale into a wall of blurred pixels.
+  const targetZoom = step.zoom || Math.max(1.2, Math.min(autoFit, 4.0))
 
   await captureFrames(ctx, step.duration, async (progress) => {
     const currentZoom = startZoom + (targetZoom - startZoom) * progress
-    const originX = (elementCenter.x / viewport.width) * 100
-    const originY = (elementCenter.y / viewport.height) * 100
 
     await page.evaluate(
       ({ zoom, ox, oy }) => {
         const body = document.body as HTMLElement
-        body.style.transformOrigin = `${ox}% ${oy}%`
+        body.style.transformOrigin = `${ox}px ${oy}px`
         body.style.transform = `scale(${zoom})`
         body.style.transition = 'none'
       },
-      { zoom: currentZoom, ox: originX, oy: originY }
+      { zoom: currentZoom, ox: target.originX, oy: target.originY }
     )
   })
 }
@@ -121,17 +181,30 @@ export async function actionZoomOut(ctx: ActionContext): Promise<void> {
   const endZoom = 1.0
 
   await captureFrames(ctx, ctx.step.duration, async (progress) => {
-    const currentZoom = startZoom + (endZoom - startZoom) * progress
-    await page.evaluate((zoom) => {
-      const body = document.body as HTMLElement
-      if (zoom <= 1.0) {
-        body.style.transform = ''
-        body.style.transformOrigin = ''
-      } else {
-        body.style.transform = `scale(${zoom})`
-        body.style.transition = 'none'
-      }
-    }, currentZoom)
+    // Overshooting easings (spring) drive progress past 1, which would take the
+    // scale below 1.0 mid-move. The branch below clears the transform at <= 1,
+    // so an un-clamped overshoot makes the page snap back to full size and then
+    // jump again on the next frame. Clamp so the move only ever settles.
+    const raw = startZoom + (endZoom - startZoom) * progress
+    const currentZoom = Math.max(endZoom, raw)
+    const isFinalFrame = progress >= 1
+
+    await page.evaluate(
+      ({ zoom, done }) => {
+        const body = document.body as HTMLElement
+        if (done && zoom <= 1.0) {
+          // Only tear the transform down once we have actually arrived, so the
+          // page is left exactly as it was found.
+          body.style.transform = ''
+          body.style.transformOrigin = ''
+          body.style.transition = ''
+        } else {
+          body.style.transform = `scale(${zoom})`
+          body.style.transition = 'none'
+        }
+      },
+      { zoom: currentZoom, done: isFinalFrame }
+    )
   })
 }
 
