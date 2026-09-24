@@ -134,6 +134,35 @@ describe('Phase 2: Watch Mode', () => {
     }, 400)
   })
 
+  it('an attach-mode script with cdpUrl and no url is accepted', (t, done) => {
+    // Attach mode records a browser that is already running, so the script
+    // names where to connect instead of a page to open. Rejecting it for a
+    // missing url would make --connect unusable from watch mode.
+    let parseErrors = 0
+    let changeCount = 0
+
+    const stop = watchScript({
+      filePath: scriptFile,
+      debounceMs: 100,
+      onChange: () => { changeCount++ },
+      onParseError: () => { parseErrors++ },
+    })
+
+    setTimeout(() => {
+      fs.writeFileSync(
+        scriptFile,
+        JSON.stringify({ cdpUrl: 'http://127.0.0.1:9222', steps: [{ action: 'wait', duration: 1 }] })
+      )
+    }, 50)
+
+    setTimeout(() => {
+      stop()
+      assert.equal(parseErrors, 0, 'cdpUrl stands in for url')
+      assert.equal(changeCount, 1)
+      done()
+    }, 400)
+  })
+
   it('AbortError: render aborted throws AbortError not generic error', () => {
     const err = new AbortError('test abort')
     assert.ok(err instanceof AbortError, 'Should be instanceof AbortError')

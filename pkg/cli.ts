@@ -24,6 +24,8 @@ USAGE
 
 RENDER OPTIONS
   --script, -s <file>    Path to JSON script file
+  --connect <cdp-url>    Attach to a running browser instead of launching one,
+                         e.g. http://127.0.0.1:9222 (records Electron/desktop apps)
   --output, -o <dir>     Output directory (default: ./output)
   --format, -f <fmt>     Output format: mp4, gif (default: mp4)
   --all-formats          Render all 5 formats simultaneously
@@ -65,6 +67,8 @@ AVAILABLE ACTIONS
 
 interface ScriptFile {
   url?: string
+  /** Attach to a running browser over CDP instead of launching one. */
+  cdpUrl?: string
   steps: StepInput[]
   viewport?: { width: number; height: number }
   fps?: number
@@ -351,9 +355,12 @@ async function main() {
       }
     }
 
-    const url = inlineUrl || scriptFile?.url
-    if (!url) {
-      console.error('Error: URL required. Provide as argument or in script file.')
+    // Attach mode records a browser that is already running, so there is
+    // nothing to navigate to and --url / url are not required.
+    const cdpUrl = (args.connect as string | undefined) || scriptFile?.cdpUrl
+    const url = inlineUrl || scriptFile?.url || ''
+    if (!url && !cdpUrl) {
+      console.error('Error: URL required. Provide as argument, in the script file, or use --connect.')
       process.exit(1)
     }
 
@@ -422,6 +429,8 @@ async function main() {
               zoom: s.zoom,
               easing: s.easing,
               annotation: s.annotation,
+              annotationPosition: s.annotationPosition,
+              subtitle: s.subtitle,
               highlightColor: s.highlightColor,
             })),
             createdAt: new Date().toISOString(),
@@ -465,6 +474,7 @@ async function main() {
         const script = {
           id: scriptId,
           url,
+          cdpUrl,
           viewport: { width, height },
           fps,
           outputFormat: 'mp4' as const,
@@ -478,6 +488,8 @@ async function main() {
             zoom: s.zoom,
             easing: s.easing,
             annotation: s.annotation,
+            annotationPosition: s.annotationPosition,
+            subtitle: s.subtitle,
             highlightColor: s.highlightColor,
           })),
           createdAt: new Date().toISOString(),
@@ -511,6 +523,7 @@ async function main() {
         // Single-format render (existing behavior)
         const input: RenderInput = {
           url,
+          cdpUrl,
           steps,
           viewport: { width, height },
           fps,
@@ -603,6 +616,7 @@ async function main() {
         const engineScript = {
           id: scriptId,
           url,
+          cdpUrl: scriptObj.cdpUrl,
           viewport: { width, height },
           fps,
           outputFormat: format as 'mp4' | 'gif',
@@ -616,6 +630,8 @@ async function main() {
             zoom: s.zoom,
             easing: s.easing,
             annotation: s.annotation,
+            annotationPosition: s.annotationPosition,
+            subtitle: s.subtitle,
             highlightColor: s.highlightColor,
           })),
           createdAt: new Date().toISOString(),
@@ -787,6 +803,8 @@ async function main() {
         zoom: s.zoom,
         easing: s.easing,
         annotation: s.annotation,
+        annotationPosition: s.annotationPosition,
+        subtitle: s.subtitle,
         highlightColor: s.highlightColor,
       })),
     }

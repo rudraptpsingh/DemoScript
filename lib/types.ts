@@ -9,6 +9,7 @@ export type ActionType =
   | 'click'
   | 'type'
   | 'hover'
+  | 'title'
 
 export interface Step {
   id: string
@@ -18,8 +19,20 @@ export interface Step {
   action: ActionType
   duration: number
   zoom?: number
-  easing?: 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
+  easing?:
+    | 'linear'
+    | 'ease-in'
+    | 'ease-out'
+    | 'ease-in-out'
+    | 'smooth'
+    | 'ease-out-expo'
+    | 'ease-in-out-quart'
+    | 'spring'
   annotation?: string
+  /** Where the caption sits. `callout` anchors it to `target`. */
+  annotationPosition?: 'bottom' | 'top' | 'center' | 'callout'
+  /** Quieter second line, under the caption or title-card heading. */
+  subtitle?: string
   highlightColor?: string
   scrollOffset?: number
   /** Text to type character-by-character (for type action) */
@@ -29,6 +42,17 @@ export interface Step {
 export interface DemoScript {
   id: string
   url: string
+  /**
+   * Attach to an ALREADY-RUNNING browser over the Chrome DevTools Protocol
+   * instead of launching a fresh one, e.g. "http://127.0.0.1:9222".
+   *
+   * This is how you record something that is not a plain web page — an Electron
+   * app, a desktop build, or a page that took a long sign-in to reach. The
+   * caller owns that browser: DemoScript will not navigate it, will not resize
+   * it, and will not close it when the render finishes. `url` and `viewport`
+   * are ignored in this mode; the attached page is captured exactly as it is.
+   */
+  cdpUrl?: string
   viewport: { width: number; height: number }
   fps: number
   outputFormat: 'mp4' | 'gif' | 'webm'

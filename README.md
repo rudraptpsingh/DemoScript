@@ -254,11 +254,12 @@ console.log(result.duration)   // 4
 |--------|-------------|-------------|
 | `wait` | Hold current frame | `duration`, `annotation` |
 | `scroll-to` | Smooth scroll to element | `target`, `duration`, `easing` |
-| `zoom-in` | Zoom into element | `target`, `duration`, `zoom` (1.5–3.5) |
+| `zoom-in` | Zoom into element | `target`, `duration`, `zoom` (omit to auto-fit the element) |
 | `zoom-out` | Zoom back to normal | `duration` |
 | `highlight` | Colored border around element | `target`, `duration`, `highlightColor` |
 | `pan` | Pan viewport to element | `target`, `duration`, `easing` |
 | `cursor-move` | Animate cursor to element | `target`, `duration` |
+| `title` | Full-frame story card | `annotation` (heading), `subtitle`, `duration` |
 | `click` | Move cursor and click element | `target`, `duration` |
 
 ## Step Options
@@ -268,12 +269,122 @@ console.log(result.duration)   // 4
   action: 'scroll-to',              // Required: action type
   target: '#pricing',               // CSS selector (null for whole-page actions)
   duration: 2,                      // Seconds (0.5–5.0)
-  easing: 'ease-in-out',            // 'linear' | 'ease-in' | 'ease-out' | 'ease-in-out'
-  annotation: 'Check our pricing',  // Text overlay shown at the bottom
+  easing: 'smooth',                 // optional; see the easing table below
+  annotation: 'Check our pricing',  // On-screen text; the heading on a title card
+  annotationPosition: 'bottom',     // 'bottom' | 'top' | 'center' | 'callout'
+  subtitle: 'Billed yearly',        // Quieter second line
   highlightColor: '#6366F1',        // Border color for highlight (hex)
-  zoom: 2.0,                        // Magnification level for zoom-in/zoom-out
+  zoom: 2.0,                        // Omit on zoom-in to frame the element automatically
 }
 ```
+
+### Easing
+
+Camera motion is what makes a render feel hand-made rather than scripted. Zooms
+default to `smooth`, which starts and ends with zero speed and zero
+acceleration, so the camera neither lurches off the mark nor stops dead. Scale
+is also interpolated in log space, which is how zoom is perceived: a linear
+1x→4x ramp feels fast at the start and sluggish at the end even with a gentle
+curve.
+
+| Easing | Feel | Use for |
+|--------|------|---------|
+| `linear` | Constant speed | Mechanical motion, progress bars |
+| `ease-in` | Slow start, fast finish | Leaving a resting state |
+| `ease-out` | Fast start, soft landing | Most moves |
+| `ease-in-out` | Soft at both ends | Long scrolls |
+| `smooth` | Starts and ends at rest | **Default for zooms.** Camera moves |
+| `ease-out-expo` | Fast off the mark, long settle | Snappy UI emphasis — avoid for zooms, it lurches |
+| `ease-in-out-quart` | Very soft both ends | Slow, deliberate reveals |
+| `spring` | Slight overshoot, then settles | Short moves under ~0.6s |
+
+`spring` reads as lively on a short step and seasick on a long one — keep it brief.
+
+### Zooming to a component
+
+Leave `zoom` out of a `zoom-in` step and DemoScript measures the element and
+picks a magnification that frames it with a small margin, capped at 4x. That is
+usually what you want when zooming to a real UI component: a fixed `2.0` is too
+tight on a wide panel and too loose on a small control.
+
+```json
+{ "action": "zoom-in", "target": ".pricing-card.featured", "duration": 1.2 }
+```
+
+The camera moves the target to the **centre** of the frame as it zooms, and
+stops short of showing past the page edge. Zooming "in place" instead keeps an
+element wherever it already sits on screen, so a toolbar or side panel stays
+pinned to its edge and half of it is pushed out of frame.
+
+Zooms also start from wherever the camera already is. Two `zoom-in` steps in a
+row glide straight from the first component to the second; you only need
+`zoom-out` when you want to return to the full frame.
+
+```json
+{ "action": "zoom-in", "target": "#hero h1", "duration": 1.2 },
+{ "action": "zoom-in", "target": "#cta", "duration": 1.2 },
+{ "action": "zoom-out", "duration": 1.0 }
+```
+
+### Text on screen
+
+Any step can carry a caption; `title` gives you a full-frame story card for the
+open and the close.
+
+```json
+{ "action": "title", "duration": 2.2, "annotation": "Cull a wedding in one sitting", "subtitle": "Straight off the card" },
+{ "action": "highlight", "target": ".card.selected", "duration": 1.4, "annotation": "Green: selected", "annotationPosition": "callout" },
+{ "action": "zoom-in", "target": ".card.selected", "duration": 1.6, "annotation": "Select, reject and star as you go", "subtitle": "Tags happen in the same pass" }
+```
+
+`callout` anchors the caption to the step's `target` — under it, or above when
+there is no room — instead of parking everything at the bottom of the frame.
+
+Type is sized as a **share of frame height**, not in fixed pixels: a caption is
+~3.4% of the height (about 29px on an 844px-tall recording), a title-card
+heading ~7.5%, both clamped at each end. The same script stays readable whether
+it renders at 720p for a blog embed or tall for a phone-shaped reel, which a
+fixed 16px caption does not. Text sits inside a 5.5% safe margin, wraps at
+about two-thirds of the frame width to keep lines in the 40–60 character range,
+sits on a scrim rather than relying on a shadow (these overlays land on
+photographs), and fades in and out rather than popping.
+
+---
+
+## Recording an app, not a page
+
+`--connect` attaches to a browser that is **already running** over the Chrome
+DevTools Protocol instead of launching a fresh headless one. This is how you
+record something that is not a plain URL: an Electron app, a desktop build, or
+a page that took a long sign-in to reach.
+
+Start your app with remote debugging enabled:
+
+```bash
+# Electron
+electron . --remote-debugging-port=9222
+```
+
+```bash
+# Chrome / Chromium
+chrome --remote-debugging-port=9222
+```
+
+Then point a render at it:
+
+```bash
+npx demoscript render --script demo.json --connect http://127.0.0.1:9222
+```
+
+In attach mode DemoScript treats the browser as borrowed: it does **not**
+navigate, resize, strip cookie banners, pause animations, or close the app when
+the render finishes. `url` and `viewport` in your script are ignored — frames
+are sized from the live window. Everything else (zoom, highlight, pan,
+annotations) works exactly as it does on a page.
+
+This also composes with a test harness: drive the app to the state you want
+with Playwright or your own script, leave it open, and let DemoScript do the
+camera work.
 
 ---
 
