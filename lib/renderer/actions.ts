@@ -413,8 +413,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, Math.max(0, ms)))
  * Click, but say so when it cannot land (a dialog in the way, a hidden
  * element) instead of retrying silently for Playwright's 30 s and moving on.
  */
-async function clickTarget(page: Page, selector: string): Promise<void> {
-  await page.click(selector, { timeout: 5000 }).catch((err: Error) => {
+async function clickTarget(page: Page, selector: string, modifiers?: Step['modifiers']): Promise<void> {
+  await page.click(selector, { timeout: 5000, ...(modifiers?.length ? { modifiers } : {}) }).catch((err: Error) => {
     console.warn(`DemoScript: click on ${selector} did not land: ${err.message.split('\n')[0]}`)
   })
 }
@@ -547,7 +547,7 @@ export async function actionClick(ctx: ActionContext): Promise<void> {
     shared.cursorY = targetPos.y
     await ripple(page, targetPos.x, targetPos.y)
     const clickedAt = Date.now()
-    if (step.target) await clickTarget(page, step.target)
+    if (step.target) await clickTarget(page, step.target, step.modifiers)
     await sleep(holdDuration * 1000 - (Date.now() - clickedAt))
     return
   }
@@ -564,7 +564,7 @@ export async function actionClick(ctx: ActionContext): Promise<void> {
   shared.cursorY = targetPos.y
 
   // Click
-  if (step.target) await clickTarget(page, step.target)
+  if (step.target) await clickTarget(page, step.target, step.modifiers)
 
   // 40% of duration: hold on the clicked element
   await captureFrames({ ...ctx, step: { ...ctx.step, duration: holdDuration } }, holdDuration, async () => {

@@ -57,6 +57,12 @@ export interface Step {
    * The page gets a real keydown with the matching `code` ('3' → 'Digit3').
    */
   key?: string
+  /**
+   * click: modifier keys held during the click, as Playwright names them
+   * ('Meta', 'Control', 'Shift', 'Alt', 'ControlOrMeta') — a ⌘-click that adds
+   * to a selection, for example.
+   */
+  modifiers?: Array<'Alt' | 'Control' | 'ControlOrMeta' | 'Meta' | 'Shift'>
   /** press: how many times to press it (default 1). */
   repeat?: number
   /** press: seconds from one press to the next (default duration / repeat). */

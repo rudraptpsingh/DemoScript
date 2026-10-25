@@ -309,3 +309,38 @@ for (const capture of ['screencast', 'frames'] as const) {
     })
   })
 }
+
+// ─── click with modifier keys ──────────────────────────────────────────────────
+
+/** Turns the corner green only on a click that holds Meta (a ⌘-click). */
+const META_PAGE = `data:text/html,${encodeURIComponent(`<!doctype html><body style="margin:0;background:#111">
+<button id="btn" style="position:fixed;top:120px;left:120px;width:160px;height:60px">Add</button>
+<script>
+  document.getElementById('btn').addEventListener('click', (e) => {
+    if (!e.metaKey) return
+    const done = document.createElement('div')
+    done.style.cssText = 'position:fixed;top:0;right:0;width:160px;height:100px;background:#00ff00'
+    document.body.appendChild(done)
+  })
+</script></body>`)}`
+
+for (const capture of ['screencast', 'frames'] as const) {
+  describe(`render · click with modifiers · ${capture}`, () => {
+    it('holds the modifier keys while it clicks', { timeout: 60_000 }, async () => {
+      const out = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-mod-'))
+      const file = (await renderScript({
+        script: {
+          ...script(capture, [
+            { action: 'click', target: '#btn', duration: 0.8, modifiers: ['Meta'] },
+            { action: 'wait', duration: 0.5 },
+          ]),
+          url: META_PAGE,
+        },
+        outputDir: out,
+      })) as string
+      const corner = lastFrameCorner(file)
+      assert.ok(corner.g > 180 && corner.r < 90, `last frame corner is ${JSON.stringify(corner)}`)
+      fs.rmSync(out, { recursive: true, force: true })
+    })
+  })
+}
