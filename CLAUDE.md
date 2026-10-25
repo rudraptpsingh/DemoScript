@@ -1,5 +1,3 @@
-@AGENTS.md
-
 ## Git Identity
 
 Always commit under the repo owner's name, not Claude's:

@@ -148,10 +148,5 @@ describe('Phase 1: AI Script Generator', () => {
       const pkg = await import('../pkg/index')
       assert.equal(typeof pkg.generate, 'function', 'generate must be exported')
     })
-
-    it('createCloudClient is exported from pkg/index.ts', async () => {
-      const pkg = await import('../pkg/index')
-      assert.equal(typeof pkg.createCloudClient, 'function', 'createCloudClient must be exported')
-    })
   })
 })

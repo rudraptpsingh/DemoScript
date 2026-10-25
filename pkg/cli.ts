@@ -1,13 +1,12 @@
 #!/usr/bin/env node
 
-import { render, capture, generate, createCloudClient, RenderInput, StepInput, toStep } from './index'
+import { render, capture, generate, RenderInput, StepInput, toStep } from './index'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
 import { spawn } from 'child_process'
 import { watchScript, AbortError } from '../lib/watcher'
 import { ALL_FORMAT_IDS, FormatId, FORMAT_SPECS } from '../lib/renderer/formats'
-import type { DemoScriptCloudClient } from '../lib/api/client'
 
 const HELP = `
 demoscript — Generate polished demo videos from any URL
@@ -17,8 +16,6 @@ USAGE
   demoscript capture <url>                 Capture page elements for scripting
   demoscript watch --script <file.json>    Watch script and auto re-render on save
   demoscript generate --url <url> --prompt <text>  Generate script with AI
-  demoscript cloud status                  Check cloud API key and usage
-  demoscript cloud jobs list               List recent cloud render jobs
   demoscript auth set-key <key>            Save Anthropic API key locally
   demoscript --help                        Show this help
 
@@ -33,7 +30,6 @@ RENDER OPTIONS
   --fps <n>              Frames per second (default: 24)
   --width <n>            Viewport width (default: 1280)
   --height <n>           Viewport height (default: 720)
-  --api-key <key>        Use cloud rendering (DemoScript API key)
 
 WATCH OPTIONS
   --script, -s <file>    Path to JSON script file (required)
@@ -235,14 +231,6 @@ function writeConfig(data: Record<string, string>) {
   fs.writeFileSync(CONFIG_FILE, JSON.stringify(data, null, 2))
 }
 
-function getApiKey(argKey?: string): string | undefined {
-  return (
-    argKey ||
-    process.env.DEMOSCRIPT_API_KEY ||
-    readConfig()['apiKey']
-  )
-}
-
 function getAnthropicKey(argKey?: string): string | undefined {
   return (
     argKey ||
@@ -379,7 +367,6 @@ async function main() {
     const outputDir = (args.output as string) || './output'
     const allFormats = Boolean(args['all-formats'])
     const formatsArg = args.formats as string | undefined
-    const apiKey = getApiKey(args['api-key'] as string | undefined)
 
     // Determine which formats to render
     let selectedFormats: FormatId[] | null = null
@@ -404,51 +391,9 @@ async function main() {
     console.log(`  Format:   ${selectedFormats ? selectedFormats.join(', ') : format}`)
     console.log(`  FPS:      ${fps}`)
     console.log(`  Viewport: ${width}x${height}`)
-    if (apiKey) console.log('  Mode:     [cloud]')
     console.log('')
 
     const termProgress = new TerminalProgress()
-
-    // Cloud rendering path
-    if (apiKey) {
-      termProgress.start('Submitting to cloud...')
-      try {
-        const client = createCloudClient({ apiKey })
-        const cloudResult = await client.render(
-          {
-            id: 'cli-render',
-            url,
-            viewport: { width, height },
-            fps,
-            outputFormat: format as 'mp4' | 'gif',
-            steps: steps.map((s, i) => toStep(s, i, String(i))),
-            createdAt: new Date().toISOString(),
-          },
-          format,
-          {
-            onProgress: (p, msg) => termProgress.update(p, `[cloud] ${msg}`),
-          }
-        )
-
-        const resolvedOutput = path.resolve(outputDir)
-        fs.mkdirSync(resolvedOutput, { recursive: true })
-        const outFile = path.join(resolvedOutput, `demo_cloud.${format === 'gif' ? 'gif' : 'mp4'}`)
-
-        // Download the primary output
-        const primaryUrl = Object.values(cloudResult.downloadUrls)[0]
-        if (primaryUrl) {
-          await client.downloadToFile(primaryUrl, outFile)
-          termProgress.succeed('Rendered', outFile)
-          const stat = fs.statSync(outFile)
-          console.log(`  Size: ${(stat.size / 1024).toFixed(0)} KB`)
-        }
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err)
-        termProgress.fail(msg)
-        process.exit(1)
-      }
-      return
-    }
 
     // Local rendering path
     termProgress.start('Starting render...')
@@ -779,61 +724,6 @@ async function main() {
     console.log(`\nScript saved to ${outputFile}`)
     console.log(`Run: demoscript render --script ${outputFile}`)
     return
-  }
-
-  // ── cloud ─────────────────────────────────────────────────────────────────────
-  if (command === 'cloud') {
-    const subCmd = positional[1]
-    const apiKey = getApiKey(args['api-key'] as string | undefined)
-
-    if (!apiKey) {
-      console.error(
-        'Error: No cloud API key found.\n' +
-        'Set DEMOSCRIPT_API_KEY environment variable or use --api-key <key>'
-      )
-      process.exit(1)
-    }
-
-    const client = createCloudClient({ apiKey })
-
-    if (subCmd === 'status') {
-      try {
-        const status = await client.checkAuth()
-        console.log('Cloud API Status')
-        console.log(`  Tier:              ${status.tier}`)
-        console.log(`  Renders this month: ${status.rendersThisMonth}`)
-        console.log(`  Monthly limit:     ${status.renderLimitMonthly === -1 ? 'Unlimited' : status.renderLimitMonthly}`)
-        console.log(`  Renders remaining: ${status.rendersRemaining === -1 ? 'Unlimited' : status.rendersRemaining}`)
-      } catch (err) {
-        console.error(`Error: ${err instanceof Error ? err.message : err}`)
-        process.exit(1)
-      }
-      return
-    }
-
-    if (subCmd === 'jobs') {
-      const jobSubCmd = positional[2]
-      if (jobSubCmd === 'list') {
-        console.log('(Job listing requires the cloud API to be running.)')
-        console.log('Use the DemoScript dashboard at https://api.demoscript.com to view jobs.')
-      } else if (jobSubCmd === 'logs') {
-        const jobId = positional[3]
-        if (!jobId) {
-          console.error('Usage: demoscript cloud jobs logs <jobId>')
-          process.exit(1)
-        }
-        console.log(`(Fetching logs for job ${jobId}...)`)
-        console.log('Use the DemoScript dashboard at https://api.demoscript.com to view logs.')
-      } else {
-        console.error('Usage: demoscript cloud jobs list|logs <jobId>')
-        process.exit(1)
-      }
-      return
-    }
-
-    console.error(`Unknown cloud subcommand: ${subCmd}`)
-    console.error('Available: status, jobs list, jobs logs <id>')
-    process.exit(1)
   }
 
   console.error(`Unknown command: ${command}`)

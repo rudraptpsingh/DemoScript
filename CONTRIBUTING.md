@@ -50,8 +50,10 @@ lib/renderer/
   engine.ts           launches or attaches a browser, walks the steps, encodes
   actions.ts          one function per action (zoom, pan, highlight, ...)
   ffmpeg.ts           frames to MP4/GIF/WebM
-app/                  the Next.js web editor
-server/               hosted cloud rendering
+  live.ts             screencast capture for live apps (capture: "screencast")
+  markers.ts          step markers and WebVTT captions
+lib/ai/               generate a script from a URL and a prompt
+lib/watcher.ts        watch mode
 ```
 
 The render loop is deliberately dumb: for each step, compute eased progress
