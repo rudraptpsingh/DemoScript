@@ -707,6 +707,26 @@ export async function actionWaitFor(ctx: ActionContext): Promise<void> {
   }
 }
 
+/**
+ * Press a key `repeat` times, `interval` seconds apart, holding on the result
+ * after each press. Presses ride the frame clock, so they land at the same
+ * moments in both capture modes.
+ */
+export async function actionPress(ctx: ActionContext): Promise<void> {
+  const { page, step } = ctx
+  if (!step.key) throw new Error(`press step "${step.targetLabel || step.id}" has no key`)
+  const repeat = Math.max(1, Math.floor(step.repeat ?? 1))
+  const interval = step.interval ?? step.duration / repeat
+  const total = repeat * interval
+  let pressed = 0
+  await captureFrames({ ...ctx, step: { ...step, easing: 'linear' } }, total, async (progress) => {
+    while (pressed < repeat && progress * total >= pressed * interval - 1e-6) {
+      await page.keyboard.press(step.key as string)
+      pressed++
+    }
+  })
+}
+
 export async function executeAction(ctx: ActionContext): Promise<void> {
   // A title card draws its own full-frame text; every other action can carry a
   // caption over whatever it is doing.
@@ -739,6 +759,8 @@ export async function executeAction(ctx: ActionContext): Promise<void> {
       return actionTitle(ctx)
     case 'wait-for':
       return actionWaitFor(ctx)
+    case 'press':
+      return actionPress(ctx)
     default:
       return actionWait(ctx)
   }

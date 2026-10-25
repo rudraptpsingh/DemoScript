@@ -11,6 +11,7 @@ export type ActionType =
   | 'hover'
   | 'title'
   | 'wait-for'
+  | 'press'
 
 export interface Step {
   id: string
@@ -51,6 +52,15 @@ export interface Step {
    * {seconds}.
    */
   skipCard?: string | boolean
+  /**
+   * press: the key, as Playwright names it ('p', 'ArrowRight', '3', 'Escape').
+   * The page gets a real keydown with the matching `code` ('3' → 'Digit3').
+   */
+  key?: string
+  /** press: how many times to press it (default 1). */
+  repeat?: number
+  /** press: seconds from one press to the next (default duration / repeat). */
+  interval?: number
   /** false: run the step without recording it (live capture only). */
   record?: boolean
 }

@@ -186,6 +186,7 @@ console.log(result.duration)   // 4
 | `type` | Type into a field (real keystrokes in screencast capture) | `target`, `typeText`, `duration` |
 | `hover` | Move cursor and hold over element | `target`, `duration` |
 | `wait-for` | Wait for the app, recording nothing | `until`, `timeout`, `skipCard`, `duration` |
+| `press` | Press a key, one or more times (real keystrokes) | `key`, `repeat`, `interval`, `duration` |
 
 ## Step Options
 

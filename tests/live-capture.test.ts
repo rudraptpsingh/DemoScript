@@ -208,3 +208,59 @@ describe('render · record: false', () => {
     fs.rmSync(out, { recursive: true, force: true })
   })
 })
+
+// ─── press ─────────────────────────────────────────────────────────────────────
+
+/**
+ * Turns the corner green only after ArrowRight ×3 and then '3' as Digit3 —
+ * the code a keyboard-bound app (star ratings) actually matches on — with at
+ * least `gapMs` between presses. Only screencast runs on the wall clock;
+ * frames mode presses as fast as it can take screenshots.
+ */
+const keysPage = (gapMs: number) => `data:text/html,${encodeURIComponent(`<!doctype html><body style="margin:0;background:#111">
+<script>
+  const keys = []
+  let last = 0, spaced = true
+  addEventListener('keydown', (e) => {
+    const now = performance.now()
+    if (keys.length && now - last < ${gapMs}) spaced = false
+    last = now
+    keys.push(e.key + '/' + e.code)
+    if (spaced && keys.join(' ') === 'ArrowRight/ArrowRight ArrowRight/ArrowRight ArrowRight/ArrowRight 3/Digit3') {
+      const done = document.createElement('div')
+      done.style.cssText = 'position:fixed;top:0;right:0;width:160px;height:100px;background:#00ff00'
+      document.body.appendChild(done)
+    }
+  })
+</script></body>`)}`
+
+const PRESSES: StepInput[] = [
+  { action: 'press', key: 'ArrowRight', repeat: 3, interval: 0.5, duration: 0 },
+  { action: 'press', key: '3', duration: 0.6 },
+]
+
+describe('press', () => {
+  it('refuses a press with no key', async () => {
+    const { actionPress } = await import('../lib/renderer/actions')
+    const ctx = { page: {}, step: toStep({ action: 'press', duration: 1 }, 0, 'p') } as never
+    await assert.rejects(actionPress(ctx), /has no key/)
+  })
+})
+
+for (const capture of ['screencast', 'frames'] as const) {
+  describe(`render · press · ${capture}`, () => {
+    it('presses each key the right number of times, interval apart', { timeout: 60_000 }, async () => {
+      const out = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-press-'))
+      const file = (await renderScript({
+        script: { ...script(capture, PRESSES), url: keysPage(capture === 'screencast' ? 300 : 0) },
+        outputDir: out,
+      })) as string
+      // 3 × 0.5 s + 0.6 s.
+      const seconds = videoSeconds(file)
+      assert.ok(seconds > 1.8 && seconds < 2.6, `video is ${seconds}s`)
+      const corner = lastFrameCorner(file)
+      assert.ok(corner.g > 180 && corner.r < 90, `last frame corner is ${JSON.stringify(corner)}`)
+      fs.rmSync(out, { recursive: true, force: true })
+    })
+  })
+}
