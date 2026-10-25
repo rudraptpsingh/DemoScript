@@ -7,6 +7,8 @@ import { DemoScript } from '../types'
 import { executeAction, removeAnnotation, SharedState } from './actions'
 import { encodeFramesToVideo, encodeFramesToGif, encodeMultipleFormats, MultiFormatResult } from './ffmpeg'
 import type { FormatId } from './formats'
+import { LiveRecorder } from './live'
+import { toVtt, type StepMarker } from './markers'
 import { AbortError } from '../watcher'
 
 export interface RenderOptions {
@@ -154,6 +156,15 @@ export async function renderScript(options: RenderOptions): Promise<string | Mul
         page.viewportSize() ??
         script.viewport)
 
+    // Screencast capture records in real time and only while steps record.
+    const live =
+      script.capture === 'screencast'
+        ? new LiveRecorder(page, path.join(frameDir, 'live'), liveViewport)
+        : null
+    await live?.start()
+    const outputTime = () => (live ? live.elapsed() : (frameCount.value - 1) / script.fps)
+    const markers: StepMarker[] = []
+
     const frameCount = { value: 1 }
     const totalSteps = script.steps.length
     const shared: SharedState = {
@@ -171,6 +182,8 @@ export async function renderScript(options: RenderOptions): Promise<string | Mul
         `Rendering step ${i + 1}/${totalSteps}: ${step.action} on ${step.targetLabel || step.target || 'page'}`
       )
 
+      const start = outputTime()
+      if (step.record === false) live?.pause()
       await executeAction({
         page,
         step,
@@ -179,6 +192,16 @@ export async function renderScript(options: RenderOptions): Promise<string | Mul
         frameCount,
         viewport: liveViewport,
         shared,
+        live: live ?? undefined,
+      })
+      if (step.record === false) live?.resume()
+      markers.push({
+        index: i,
+        action: step.action,
+        label: step.targetLabel || step.target || '',
+        start,
+        end: outputTime(),
+        ...(step.annotation ? { annotation: step.annotation } : {}),
       })
 
       // Remove annotation after step
@@ -189,18 +212,32 @@ export async function renderScript(options: RenderOptions): Promise<string | Mul
 
     if (signal?.aborted) throw new AbortError()
 
-    const capturedFrames = frameCount.value - 1
+    if (live) await live.stop()
+    const capturedFrames = live
+      ? live.writeConstantRate(frameDir, script.fps)
+      : frameCount.value - 1
+    // The screencast is at device pixels (2x on a Retina screen): keep them.
+    const dpr = live ? await page.evaluate(() => window.devicePixelRatio).catch(() => 1) : 1
+    const even = (n: number) => Math.round(n / 2) * 2
+    const encodeSize = { width: even(liveViewport.width * dpr), height: even(liveViewport.height * dpr) }
+    if (capturedFrames === 0) throw new Error('Nothing was recorded: every step had record: false')
+    // Where each step lands in the video, for editing, chapters and captions.
+    const writeMarkers = (base: string) => {
+      fs.writeFileSync(`${base}.steps.json`, JSON.stringify(markers, null, 2))
+      if (markers.some((m) => m.annotation)) fs.writeFileSync(`${base}.vtt`, toVtt(markers))
+    }
 
     // Multi-format export path (any time formats array is explicitly provided)
     if (formats && formats.length >= 1) {
       const fmtLabel = formats.length === 1 ? '1 format' : `${formats.length} formats`
       progress(80, `Captured ${capturedFrames} frames. Encoding ${fmtLabel}...`)
       const baseOutputPath = path.join(outputDir, `demo_${script.id}`)
+      writeMarkers(baseOutputPath)
       const results: MultiFormatResult = await encodeMultipleFormats({
         frameDir,
         baseOutputPath,
         fps: script.fps,
-        viewport: liveViewport,
+        viewport: encodeSize,
         formatIds: formats,
       })
 
@@ -227,22 +264,23 @@ export async function renderScript(options: RenderOptions): Promise<string | Mul
           ? 'webm'
           : 'mp4'
     const outputPath = path.join(outputDir, `demo_${script.id}.${ext}`)
+    writeMarkers(path.join(outputDir, `demo_${script.id}`))
 
     if (script.outputFormat === 'gif') {
       await encodeFramesToGif({
         frameDir,
         outputPath,
         fps: script.fps,
-        width: liveViewport.width,
-        height: liveViewport.height,
+        width: encodeSize.width,
+        height: encodeSize.height,
       })
     } else {
       await encodeFramesToVideo({
         frameDir,
         outputPath,
         fps: script.fps,
-        width: liveViewport.width,
-        height: liveViewport.height,
+        width: encodeSize.width,
+        height: encodeSize.height,
       })
     }
 

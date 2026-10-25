@@ -38,6 +38,8 @@ export interface RenderInput {
    * started with --remote-debugging-port) instead of launching one.
    */
   cdpUrl?: string
+  /** 'screencast' records a live app in real time (see DemoScript.capture). */
+  capture?: DemoScript['capture']
   /** Ordered list of actions to perform */
   steps: StepInput[]
   /** Viewport size (default: 1280x720) */
@@ -52,35 +54,21 @@ export interface RenderInput {
   onProgress?: (progress: number, message: string) => void
 }
 
-export interface StepInput {
-  /** Action type */
-  action: ActionType
+/**
+ * A step as written in a script: a Step without the ids, with an optional
+ * `label`. Every Step field passes through, so a new one needs no mapping.
+ */
+export type StepInput = Omit<Step, 'id' | 'order' | 'target' | 'targetLabel'> & {
   /** CSS selector for the target element (null for whole page) */
   target?: string | null
-  /** Human-readable label (auto-generated if omitted) */
+  /** Human-readable label (defaults to the target) */
   label?: string
-  /** Duration in seconds */
-  duration: number
-  /** Zoom level for zoom-in/zoom-out (default: 2.0) */
-  zoom?: number
-  /** Easing function (default: 'ease-in-out') */
-  easing?:
-    | 'linear'
-    | 'ease-in'
-    | 'ease-out'
-    | 'ease-in-out'
-    | 'smooth'
-    | 'ease-out-expo'
-    | 'ease-in-out-quart'
-    | 'spring'
-  /** Text annotation overlay */
-  annotation?: string
-  annotationPosition?: 'bottom' | 'top' | 'center' | 'callout'
-  subtitle?: string
-  /** Border color for highlight action (default: '#3B82F6') */
-  highlightColor?: string
-  /** Text to type character-by-character into target field (for type action) */
-  typeText?: string
+}
+
+/** The one place a script's step becomes an engine Step. */
+export function toStep(s: StepInput, index: number, id: string = nanoid()): Step {
+  const { label, target, ...rest } = s
+  return { ...rest, id, order: index + 1, target: target ?? null, targetLabel: label || target || 'Page' }
 }
 
 export interface RenderResult {
@@ -99,6 +87,7 @@ export async function render(input: RenderInput): Promise<RenderResult> {
   const {
     url,
     cdpUrl,
+    capture,
     steps: stepInputs,
     viewport = { width: 1280, height: 720 },
     fps = 24,
@@ -108,26 +97,13 @@ export async function render(input: RenderInput): Promise<RenderResult> {
   } = input
 
   const scriptId = nanoid()
-  const steps: Step[] = stepInputs.map((s, i) => ({
-    id: nanoid(),
-    order: i + 1,
-    target: s.target ?? null,
-    targetLabel: s.label || s.target || 'Page',
-    action: s.action,
-    duration: s.duration,
-    zoom: s.zoom,
-    easing: s.easing,
-    annotation: s.annotation,
-    annotationPosition: s.annotationPosition,
-    subtitle: s.subtitle,
-    highlightColor: s.highlightColor,
-    typeText: s.typeText,
-  }))
+  const steps: Step[] = stepInputs.map((s, i) => toStep(s, i))
 
   const script: DemoScript = {
     id: scriptId,
     url,
     cdpUrl,
+    capture,
     viewport,
     fps,
     outputFormat,

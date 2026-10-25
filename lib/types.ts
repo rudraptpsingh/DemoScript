@@ -10,6 +10,7 @@ export type ActionType =
   | 'type'
   | 'hover'
   | 'title'
+  | 'wait-for'
 
 export interface Step {
   id: string
@@ -37,6 +38,21 @@ export interface Step {
   scrollOffset?: number
   /** Text to type character-by-character (for type action) */
   typeText?: string
+  /**
+   * wait-for: what to wait for. Nothing is recorded while waiting, so a step
+   * that takes an hour in the app takes none in the video.
+   */
+  until?: { selector?: string; text?: string; js?: string }
+  /** wait-for: give up after this many seconds (default 600). */
+  timeout?: number
+  /**
+   * wait-for: after the wait, show a card for `duration` seconds saying how
+   * long was skipped. true → "57 min later"; a string may use {minutes} and
+   * {seconds}.
+   */
+  skipCard?: string | boolean
+  /** false: run the step without recording it (live capture only). */
+  record?: boolean
 }
 
 export interface DemoScript {
@@ -53,6 +69,13 @@ export interface DemoScript {
    * are ignored in this mode; the attached page is captured exactly as it is.
    */
   cdpUrl?: string
+  /**
+   * 'frames' (default): one screenshot per frame on a virtual clock —
+   * deterministic, right for pages that move only when DemoScript moves them.
+   * 'screencast': record in real time from the Chrome screencast — right for
+   * an app doing real work on its own clock (progress, typing, live data).
+   */
+  capture?: 'frames' | 'screencast'
   viewport: { width: number; height: number }
   fps: number
   outputFormat: 'mp4' | 'gif' | 'webm'

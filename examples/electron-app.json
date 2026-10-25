@@ -1,0 +1,51 @@
+{
+  "capture": "screencast",
+  "fps": 30,
+  "outputFormat": "mp4",
+  "steps": [
+    {
+      "action": "title",
+      "duration": 1.5,
+      "annotation": "Back up a card",
+      "subtitle": "Every copy checked"
+    },
+    {
+      "action": "click",
+      "target": "[data-testid=\"nav-rail-home\"]",
+      "duration": 1.6
+    },
+    {
+      "action": "click",
+      "target": "[data-testid=\"library-panel-device-/Volumes/Untitled\"]",
+      "duration": 1.6,
+      "label": "The card"
+    },
+    {
+      "action": "click",
+      "target": "[data-testid=\"device-inspector-card-backup\"]",
+      "duration": 1.6,
+      "label": "Back up card"
+    },
+    {
+      "action": "wait-for",
+      "until": {
+        "selector": "[data-testid=\"device-backup-sidebar\"]"
+      },
+      "duration": 0,
+      "timeout": 15
+    },
+    {
+      "action": "type",
+      "target": "[data-testid=\"device-backup-sidebar\"] input",
+      "typeText": "ShotSelect Demo - Card 1",
+      "duration": 2,
+      "annotation": "Name the folder"
+    },
+    {
+      "action": "highlight",
+      "target": "[data-testid=\"backup-sidebar-start\"]",
+      "duration": 1.8,
+      "annotation": "One click: copied, then read back from the drive"
+    }
+  ]
+}

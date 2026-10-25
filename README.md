@@ -261,6 +261,9 @@ console.log(result.duration)   // 4
 | `cursor-move` | Animate cursor to element | `target`, `duration` |
 | `title` | Full-frame story card | `annotation` (heading), `subtitle`, `duration` |
 | `click` | Move cursor and click element | `target`, `duration` |
+| `type` | Type into a field (real keystrokes in screencast capture) | `target`, `typeText`, `duration` |
+| `hover` | Move cursor and hold over element | `target`, `duration` |
+| `wait-for` | Wait for the app, recording nothing | `until`, `timeout`, `skipCard`, `duration` |
 
 ## Step Options
 
@@ -385,6 +388,40 @@ annotations) works exactly as it does on a page.
 This also composes with a test harness: drive the app to the state you want
 with Playwright or your own script, leave it open, and let DemoScript do the
 camera work.
+
+### Live capture and long waits
+
+An app doing real work (a backup, an export, a sync) moves on its own clock.
+Two script options make that recordable in a short video:
+
+```json
+{
+  "capture": "screencast",
+  "steps": [
+    { "action": "click", "target": "[data-testid=start]", "duration": 1.6 },
+    { "action": "wait-for", "until": { "text": "Backed up and checked" },
+      "timeout": 7200, "skipCard": true, "duration": 1.2 },
+    { "action": "wait", "duration": 2, "annotation": "Every copy read back" }
+  ]
+}
+```
+
+- `"capture": "screencast"` records in real time from the Chrome screencast
+  at the window's full resolution (2x on a Retina screen), instead of one
+  screenshot per frame. The cursor glides with CSS easing, clicks show a
+  ripple, and `type` sends real keystrokes, so React and Vue inputs keep the
+  text.
+- `wait-for` waits until `until.selector` is visible, `until.text` is on
+  the page, or `until.js` is true, recording nothing meanwhile: an hour in the
+  app is no time in the video. `skipCard: true` then shows "57 min later" for
+  `duration` seconds; a string may use `{minutes}` and `{seconds}`.
+- `"record": false` on any step runs it without recording it (setup, resets).
+
+Every render also writes `<video>.steps.json` (where each step starts and
+ends in the video) and, when steps have annotations, `<video>.vtt` captions.
+
+[`examples/electron-app.json`](examples/electron-app.json) records the backup
+dialog of a real Electron app (ShotSelect) this way.
 
 ---
 
