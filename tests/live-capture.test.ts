@@ -264,3 +264,48 @@ for (const capture of ['screencast', 'frames'] as const) {
     })
   })
 }
+
+// ─── captions on click, hover and type ─────────────────────────────────────────
+
+/** A red page with a button and a field, so a caption's dark scrim shows as a drop in red. */
+const RED_PAGE = `data:text/html,${encodeURIComponent(`<!doctype html><body style="margin:0;background:#ff0000">
+<button id="btn" style="position:fixed;top:20px;left:20px;width:120px;height:40px">Go</button>
+<input id="field" style="position:fixed;top:20px;left:200px;width:160px;height:30px">
+</body>`)}`
+
+/** Mean red at the centre of where a bottom caption sits (640 x 400 viewport), at time `t`. */
+function captionBandRed(file: string, t: number): number {
+  const rgb = execFileSync(ffmpegPath.path, [
+    '-hide_banner', '-loglevel', 'error', '-ss', String(t), '-i', file,
+    '-vf', 'crop=iw/16:ih/20:iw*0.47:ih*0.86,scale=1:1', '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-',
+  ])
+  return rgb[0]
+}
+
+const CAPTIONED: StepInput[] = [
+  { action: 'click', target: '#btn', duration: 1.6, annotation: 'Clicked' },
+  { action: 'hover', target: '#btn', duration: 1.6, annotation: 'Hovered' },
+  { action: 'type', target: '#field', typeText: 'hello', duration: 1.6, annotation: 'Typed' },
+  { action: 'wait', duration: 0.8 },
+]
+
+for (const capture of ['screencast', 'frames'] as const) {
+  describe(`render · captions · ${capture}`, () => {
+    it('shows the caption of a click, a hover and a type step while it runs', { timeout: 60_000 }, async () => {
+      const out = fs.mkdtempSync(path.join(os.tmpdir(), 'ds-caption-'))
+      const file = (await renderScript({
+        script: { ...script(capture, CAPTIONED), url: RED_PAGE },
+        outputDir: out,
+      })) as string
+      const markers = JSON.parse(fs.readFileSync(file.replace(/\.mp4$/, '.steps.json'), 'utf8'))
+      // The plain wait has no caption: the band stays red.
+      const bare = captionBandRed(file, (markers[3].start + markers[3].end) / 2)
+      assert.ok(bare > 230, `uncaptioned band red is ${bare}`)
+      for (const m of markers.slice(0, 3)) {
+        const red = captionBandRed(file, (m.start + m.end) / 2)
+        assert.ok(red < bare - 40, `${m.action} caption not visible: band red ${red} vs ${bare}`)
+      }
+      fs.rmSync(out, { recursive: true, force: true })
+    })
+  })
+}

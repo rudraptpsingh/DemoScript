@@ -27,10 +27,19 @@ export interface ActionContext {
   live?: LiveRecorder
 }
 
+/** Where a segment sits inside its step, so a caption fades once per step. */
+interface FadeSpan {
+  /** Seconds into the step this segment starts. */
+  start: number
+  /** The whole step's length in seconds. */
+  total: number
+}
+
 async function captureFrames(
   ctx: ActionContext,
   durationSeconds: number,
-  onFrame: (progress: number) => Promise<void>
+  onFrame: (progress: number) => Promise<void>,
+  fadeSpan?: FadeSpan
 ): Promise<void> {
   const totalFrames = Math.max(1, Math.round(durationSeconds * ctx.fps))
 
@@ -48,7 +57,12 @@ async function captureFrames(
     await onFrame(easedProgress)
     // Text fades on the RAW progress, not the eased one: a caption should
     // appear at a steady rate even while the camera is accelerating.
-    if (hasText) await setTextOpacity(ctx.page, fadeOpacity(progress, durationSeconds))
+    if (hasText) {
+      const opacity = fadeSpan
+        ? fadeOpacity((fadeSpan.start + progress * durationSeconds) / fadeSpan.total, fadeSpan.total)
+        : fadeOpacity(progress, durationSeconds)
+      await setTextOpacity(ctx.page, opacity)
+    }
 
     if (ctx.live) {
       const wait = startedAt + ((i + 1) * 1000) / ctx.fps - Date.now()
@@ -538,12 +552,13 @@ export async function actionClick(ctx: ActionContext): Promise<void> {
     return
   }
 
+  const moveSpan = { start: 0, total: step.duration }
   await captureFrames({ ...ctx, step: { ...ctx.step, duration: moveDuration } }, moveDuration, async (progress) => {
     const x = startX + (targetPos.x - startX) * progress
     const y = startY + (targetPos.y - startY) * progress
     await injectCursor(page, x, y)
     await page.mouse.move(x, y)
-  })
+  }, moveSpan)
 
   shared.cursorX = targetPos.x
   shared.cursorY = targetPos.y
@@ -554,7 +569,7 @@ export async function actionClick(ctx: ActionContext): Promise<void> {
   // 40% of duration: hold on the clicked element
   await captureFrames({ ...ctx, step: { ...ctx.step, duration: holdDuration } }, holdDuration, async () => {
     await injectCursor(page, targetPos.x, targetPos.y)
-  })
+  }, { start: moveDuration, total: step.duration })
 }
 
 export async function actionType(ctx: ActionContext): Promise<void> {
@@ -645,12 +660,13 @@ export async function actionHover(ctx: ActionContext): Promise<void> {
     return
   }
 
+  const moveSpan = { start: 0, total: step.duration }
   await captureFrames({ ...ctx, step: { ...ctx.step, duration: moveDuration } }, moveDuration, async (progress) => {
     const x = startX + (targetPos.x - startX) * progress
     const y = startY + (targetPos.y - startY) * progress
     await injectCursor(page, x, y)
     await page.mouse.move(x, y)
-  })
+  }, moveSpan)
 
   shared.cursorX = targetPos.x
   shared.cursorY = targetPos.y
@@ -660,7 +676,7 @@ export async function actionHover(ctx: ActionContext): Promise<void> {
 
   await captureFrames({ ...ctx, step: { ...ctx.step, duration: holdDuration } }, holdDuration, async () => {
     await injectCursor(page, targetPos.x, targetPos.y)
-  })
+  }, { start: moveDuration, total: step.duration })
 }
 
 /** The browser-side test for a wait-for step; true when the wait is over. */
@@ -734,6 +750,37 @@ export async function executeAction(ctx: ActionContext): Promise<void> {
     await injectAnnotation(ctx)
   }
 
+  if (ctx.live && ctx.step.annotation && LIVE_UNFRAMED.has(ctx.step.action)) {
+    return fadeCaptionWhile(ctx, () => runAction(ctx))
+  }
+  return runAction(ctx)
+}
+
+/** Live actions that run on the wall clock without captureFrames. */
+const LIVE_UNFRAMED = new Set<Step['action']>(['click', 'hover', 'type'])
+
+/** Fade the step's caption on the wall clock while `run` does the step. */
+async function fadeCaptionWhile(ctx: ActionContext, run: () => Promise<void>): Promise<void> {
+  const total = ctx.step.duration
+  const started = Date.now()
+  let done = false
+  const fader = (async () => {
+    while (!done) {
+      const p = Math.min(1, (Date.now() - started) / (total * 1000))
+      await setTextOpacity(ctx.page, fadeOpacity(p, total)).catch(() => {})
+      if (p >= 1) return
+      await new Promise((r) => setTimeout(r, 1000 / ctx.fps))
+    }
+  })()
+  try {
+    await run()
+  } finally {
+    done = true
+    await fader
+  }
+}
+
+function runAction(ctx: ActionContext): Promise<void> {
   switch (ctx.step.action) {
     case 'scroll-to':
       return actionScrollTo(ctx)
