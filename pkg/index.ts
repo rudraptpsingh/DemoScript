@@ -2,7 +2,7 @@
  * DemoScript — Programmatic API
  *
  * Usage:
- *   import { render, capture, generate, createCloudClient } from 'demoscript'
+ *   import { render, capture, generate } from 'demoscript'
  *
  *   const video = await render({
  *     url: 'https://your-site.com',
@@ -21,14 +21,11 @@ import { renderScript, RenderOptions } from '../lib/renderer/engine'
 import { ActionType, Step, DemoScript, PageCapture, CapturedElement } from '../lib/types'
 import { chromium } from 'playwright'
 import { generateScript, GenerateOptions, GenerateResult } from '../lib/ai/scriptGenerator'
-import { createCloudClient, DemoScriptCloudClient, CloudClientOptions, AuthStatus, CloudRenderResult } from '../lib/api/client'
 
 // Re-export types for consumers
 export type { ActionType, Step, DemoScript, PageCapture, CapturedElement, RenderOptions }
 export type { EncodeOptions } from '../lib/renderer/ffmpeg'
 export type { GenerateOptions, GenerateResult }
-export type { CloudClientOptions, AuthStatus, CloudRenderResult }
-export { createCloudClient, DemoScriptCloudClient }
 
 export interface RenderInput {
   /** URL of the page to record. Not needed with `cdpUrl`. */

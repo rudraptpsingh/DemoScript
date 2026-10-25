@@ -139,88 +139,10 @@ console.log(result.tokensUsed)     // Token count
 console.log(result.estimatedDuration) // Total seconds
 ```
 
-### Hosted Cloud Rendering
-
-Render in the cloud without a local Chromium/FFmpeg installation:
-
-```bash
-npx demoscript auth set-key ds_live_<your-key>
-npx demoscript render --script demo.json --api-key ds_live_<your-key>
-```
-
-Check your usage:
-
-```bash
-npx demoscript cloud status
-```
-
-**Programmatic API:**
-
-```typescript
-import { createCloudClient } from 'demoscript'
-
-const client = createCloudClient({ apiKey: process.env.DEMOSCRIPT_API_KEY! })
-
-// Check account
-const auth = await client.checkAuth()
-console.log(`${auth.rendersRemaining} renders remaining this month`)
-
-// Render
-const result = await client.render(script, 'mp4-standard', {
-  onProgress: (pct, msg) => console.log(`${pct}% ${msg}`),
-})
-
-// Download
-await client.downloadToFile(result.downloadUrls['mp4-standard'], './output/demo.mp4')
-```
-
-### GitHub Action
-
-Automatically render demo videos on every push or release:
-
-```yaml
-# .github/workflows/demo.yml
-name: Render Demo Video
-
-on:
-  push:
-    paths: ['demo.json']
-
-jobs:
-  render:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: rudraptpsingh/DemoScript@v1
-        with:
-          script-path: demo.json
-          output-path: docs/demo.mp4
-          format: mp4-standard
-          commit-output: true
-          commit-message: "chore: update demo video [skip ci]"
-```
-
-**Inputs:**
-
-| Input | Required | Default | Description |
-|-------|----------|---------|-------------|
-| `script-path` | Yes | — | Path to the JSON script file |
-| `output-path` | No | `output/demo.mp4` | Where to write the output file |
-| `format` | No | `mp4-standard` | Format ID (see table above) |
-| `api-key` | No | — | DemoScript cloud API key (uses local render if omitted) |
-| `commit-output` | No | `false` | Commit the rendered file back to the repo |
-| `commit-message` | No | `chore: update demo video` | Commit message |
-
-**Outputs:** `output-file`, `render-duration-seconds`
-
-See [`github-action/examples/`](github-action/examples/) for more workflow examples including release-triggered renders and README badge updates.
-
----
-
 ## Programmatic API
 
 ```typescript
-import { render, capture, generate, createCloudClient } from 'demoscript'
+import { render, capture, generate } from 'demoscript'
 
 // Capture page elements
 const page = await capture('https://your-site.com')
@@ -425,27 +347,6 @@ dialog of a real Electron app (ShotSelect) this way.
 
 ---
 
-## Web UI
-
-DemoScript includes a full web editor with a visual timeline:
-
-```bash
-git clone https://github.com/rudraptpsingh/DemoScript.git
-cd DemoScript
-npm install
-npx playwright install chromium
-npm run dev
-# Open http://localhost:3000
-```
-
-1. Paste a URL and click **Capture**
-2. Click elements in the page preview to add steps
-3. Configure actions, durations, and easing in the timeline sidebar
-4. Switch to **AI Mode** to generate a script from a plain-English prompt
-5. Click **Render MP4** and download your video
-
----
-
 ## Testing
 
 ```bash
@@ -464,11 +365,10 @@ npm run test:all
 | `tests/ai-generator.test.ts` | `buildSystemPrompt`, `parseAIResponse`, `validateGeneratedSteps`, prompt construction |
 | `tests/watch-mode.test.ts` | Debounce, JSON parse errors, `stop()`, `AbortError` |
 | `tests/multi-format.test.ts` | `FORMAT_SPECS`, `encodeMultipleFormats`, format spec fields |
-| `tests/cloud-client.test.ts` | Error classes, auth/rate-limit mocks, `render()`, `downloadToFile()` |
-| `tests/github-action.test.ts` | `action.yml` structure, `main.ts` logic, example workflows |
 | `tests/unit-coverage.test.ts` | Cross-cutting unit tests for all phases |
-| `tests/edge-cases.test.ts` | Debounce timing, thumbnail failure, retry logic, boundary values |
-| `tests/e2e.test.ts` | Real renders (MP4, GIF, PNG) against `public/test-site.html` |
+| `tests/edge-cases.test.ts` | Debounce timing, thumbnail failure, boundary values |
+| `tests/live-capture.test.ts` | Screencast capture, `wait-for`, `record: false`, markers (renders a page that finishes a job) |
+| `tests/e2e.test.ts` | Real renders (MP4, GIF, PNG) against `tests/fixtures/test-site.html` |
 
 ---
 

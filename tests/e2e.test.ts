@@ -2,7 +2,7 @@
  * End-to-end tests against the test-site.html
  *
  * These tests actually launch Chromium + FFmpeg to render real videos.
- * They serve public/test-site.html via a tiny Node.js HTTP server.
+ * They serve tests/fixtures/test-site.html via a tiny Node.js HTTP server.
  */
 
 import { describe, it, before, after } from 'node:test'
@@ -19,8 +19,8 @@ import type { DemoScript } from '../lib/types'
 let testServer: http.Server
 let testServerUrl: string
 
-const TEST_SITE_PATH = path.join(__dirname, '../public/test-site.html')
-const PUBLIC_DIR = path.join(__dirname, '../public')
+const TEST_SITE_PATH = path.join(__dirname, 'fixtures/test-site.html')
+const PUBLIC_DIR = path.join(__dirname, 'fixtures')
 
 function startTestServer(): Promise<string> {
   return new Promise((resolve, reject) => {

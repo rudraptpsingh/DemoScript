@@ -23,9 +23,6 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Typecheck (Next.js)
-        run: npm run typecheck
-
       - name: Typecheck (Package)
         run: npm run build:pkg
 
@@ -42,9 +39,6 @@ jobs:
           cache: npm
 
       - run: npm ci
-
-      - name: Build Next.js app
-        run: npm run build
 
       - name: Build npm package
         run: npm run build:pkg
@@ -82,10 +76,10 @@ jobs:
       - name: Test CLI --help
         run: node dist/pkg/cli.js --help
 
-      - name: Start dev server
+      - name: Serve the test page
         run: |
-          npm run dev -- --port 3099 &
-          npx wait-on http://localhost:3099/test-site.html --timeout 30000
+          (cd tests/fixtures && python3 -m http.server 3099 >/dev/null 2>&1 &)
+          for i in $(seq 1 30); do curl -sf http://localhost:3099/test-site.html >/dev/null && break; sleep 1; done
 
       - name: Test CLI capture
         run: |
