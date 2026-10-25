@@ -6,6 +6,11 @@ import { FORMAT_SPECS, FormatId } from './formats'
 
 ffmpeg.setFfmpegPath(ffmpegPath.path)
 
+/** Screenshot capture writes frame_0001.png…; live capture, frame_0001.jpg…. */
+export function framePattern(frameDir: string): string {
+  return fs.existsSync(path.join(frameDir, 'frame_0001.jpg')) ? 'frame_%04d.jpg' : 'frame_%04d.png'
+}
+
 export interface EncodeOptions {
   frameDir: string
   outputPath: string
@@ -19,7 +24,7 @@ export async function encodeFramesToVideo(options: EncodeOptions): Promise<void>
 
   return new Promise((resolve, reject) => {
     ffmpeg()
-      .input(path.join(frameDir, 'frame_%04d.png'))
+      .input(path.join(frameDir, framePattern(frameDir)))
       .inputFPS(fps)
       .videoCodec('libx264')
       .outputOptions([
@@ -52,7 +57,7 @@ export async function encodeFramesToGif(options: EncodeOptions): Promise<void> {
 
   await new Promise<void>((resolve, reject) => {
     ffmpeg()
-      .input(path.join(frameDir, 'frame_%04d.png'))
+      .input(path.join(frameDir, framePattern(frameDir)))
       .inputFPS(fps)
       .videoFilters(
         `scale=${width}:-1:flags=lanczos,palettegen=stats_mode=diff`
@@ -65,7 +70,7 @@ export async function encodeFramesToGif(options: EncodeOptions): Promise<void> {
 
   await new Promise<void>((resolve, reject) => {
     ffmpeg()
-      .input(path.join(frameDir, 'frame_%04d.png'))
+      .input(path.join(frameDir, framePattern(frameDir)))
       .inputFPS(fps)
       .input(paletteFile)
       .complexFilter(
@@ -180,7 +185,7 @@ async function encodeStandardMp4(options: {
 
   return new Promise((resolve, reject) => {
     ffmpeg()
-      .input(path.join(frameDir, 'frame_%04d.png'))
+      .input(path.join(frameDir, framePattern(frameDir)))
       .inputFPS(fps)
       .videoCodec('libx264')
       .outputOptions([
@@ -212,7 +217,7 @@ async function encodeLinkedInSquare(options: {
 
   return new Promise((resolve, reject) => {
     ffmpeg()
-      .input(path.join(frameDir, 'frame_%04d.png'))
+      .input(path.join(frameDir, framePattern(frameDir)))
       .inputFPS(fps)
       .videoCodec('libx264')
       .outputOptions([
@@ -234,11 +239,17 @@ async function encodeThumbnail(options: {
   outputPath: string
 }): Promise<void> {
   const { frameDir, outputPath } = options
-  const firstFrame = path.join(frameDir, 'frame_0001.png')
+  const firstFrame = path.join(frameDir, framePattern(frameDir).replace('%04d', '0001'))
 
   if (!fs.existsSync(firstFrame)) {
     throw new Error(`First frame not found: ${firstFrame}`)
   }
 
-  fs.copyFileSync(firstFrame, outputPath)
+  if (firstFrame.endsWith('.png')) {
+    fs.copyFileSync(firstFrame, outputPath)
+    return
+  }
+  await new Promise<void>((resolve, reject) => {
+    ffmpeg().input(firstFrame).frames(1).output(outputPath).on('end', () => resolve()).on('error', reject).run()
+  })
 }

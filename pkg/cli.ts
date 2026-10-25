@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { render, capture, generate, createCloudClient, RenderInput, StepInput } from './index'
+import { render, capture, generate, createCloudClient, RenderInput, StepInput, toStep } from './index'
 import fs from 'fs'
 import path from 'path'
 import os from 'os'
@@ -69,6 +69,8 @@ interface ScriptFile {
   url?: string
   /** Attach to a running browser over CDP instead of launching one. */
   cdpUrl?: string
+  /** 'screencast': record a live app in real time. */
+  capture?: 'frames' | 'screencast'
   steps: StepInput[]
   viewport?: { width: number; height: number }
   fps?: number
@@ -419,20 +421,7 @@ async function main() {
             viewport: { width, height },
             fps,
             outputFormat: format as 'mp4' | 'gif',
-            steps: steps.map((s, i) => ({
-              id: String(i),
-              order: i + 1,
-              target: s.target ?? null,
-              targetLabel: s.label || s.target || 'page',
-              action: s.action,
-              duration: s.duration,
-              zoom: s.zoom,
-              easing: s.easing,
-              annotation: s.annotation,
-              annotationPosition: s.annotationPosition,
-              subtitle: s.subtitle,
-              highlightColor: s.highlightColor,
-            })),
+            steps: steps.map((s, i) => toStep(s, i, String(i))),
             createdAt: new Date().toISOString(),
           },
           format,
@@ -475,23 +464,11 @@ async function main() {
           id: scriptId,
           url,
           cdpUrl,
+          capture: scriptFile?.capture,
           viewport: { width, height },
           fps,
           outputFormat: 'mp4' as const,
-          steps: steps.map((s, i) => ({
-            id: String(i),
-            order: i + 1,
-            target: s.target ?? null,
-            targetLabel: s.label || s.target || 'page',
-            action: s.action,
-            duration: s.duration,
-            zoom: s.zoom,
-            easing: s.easing,
-            annotation: s.annotation,
-            annotationPosition: s.annotationPosition,
-            subtitle: s.subtitle,
-            highlightColor: s.highlightColor,
-          })),
+          steps: steps.map((s, i) => toStep(s, i, String(i))),
           createdAt: new Date().toISOString(),
         }
 
@@ -524,6 +501,7 @@ async function main() {
         const input: RenderInput = {
           url,
           cdpUrl,
+          capture: scriptFile?.capture,
           steps,
           viewport: { width, height },
           fps,
@@ -617,23 +595,11 @@ async function main() {
           id: scriptId,
           url,
           cdpUrl: scriptObj.cdpUrl,
+          capture: scriptObj.capture,
           viewport: { width, height },
           fps,
           outputFormat: format as 'mp4' | 'gif',
-          steps: scriptObj.steps.map((s: StepInput, i: number) => ({
-            id: String(i),
-            order: i + 1,
-            target: s.target ?? null,
-            targetLabel: s.label || s.target || 'page',
-            action: s.action,
-            duration: s.duration,
-            zoom: s.zoom,
-            easing: s.easing,
-            annotation: s.annotation,
-            annotationPosition: s.annotationPosition,
-            subtitle: s.subtitle,
-            highlightColor: s.highlightColor,
-          })),
+          steps: scriptObj.steps.map((s: StepInput, i: number) => toStep(s, i, String(i))),
           createdAt: new Date().toISOString(),
         }
 

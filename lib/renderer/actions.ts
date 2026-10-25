@@ -7,6 +7,8 @@ import {
   showCaption,
   showTitleCard,
 } from './overlay'
+import type { LiveRecorder } from './live'
+import { skipCardText } from './markers'
 
 export interface SharedState {
   cursorX: number
@@ -21,6 +23,8 @@ export interface ActionContext {
   frameCount: { value: number }
   viewport: { width: number; height: number }
   shared: SharedState
+  /** Set in screencast capture: frames come from it, in real time. */
+  live?: LiveRecorder
 }
 
 async function captureFrames(
@@ -31,6 +35,9 @@ async function captureFrames(
   const totalFrames = Math.max(1, Math.round(durationSeconds * ctx.fps))
 
   const hasText = Boolean(ctx.step.annotation)
+  // Live capture: drive the same per-frame updates on the wall clock and let
+  // the screencast record them; no screenshots.
+  const startedAt = Date.now()
   for (let i = 0; i < totalFrames; i++) {
     const progress = totalFrames === 1 ? 1 : i / (totalFrames - 1)
     const easedProgress = applyEasing(
@@ -42,6 +49,13 @@ async function captureFrames(
     // Text fades on the RAW progress, not the eased one: a caption should
     // appear at a steady rate even while the camera is accelerating.
     if (hasText) await setTextOpacity(ctx.page, fadeOpacity(progress, durationSeconds))
+
+    if (ctx.live) {
+      const wait = startedAt + ((i + 1) * 1000) / ctx.fps - Date.now()
+      if (wait > 0) await new Promise((r) => setTimeout(r, wait))
+      continue
+    }
+    if (ctx.step.record === false) continue // run it, keep it out of the video
 
     const frameNumber = String(ctx.frameCount.value).padStart(4, '0')
     const framePath = `${ctx.frameDir}/frame_${frameNumber}.png`
@@ -379,6 +393,54 @@ async function injectCursor(page: Page, x: number, y: number): Promise<void> {
   }, { x, y })
 }
 
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, Math.max(0, ms)))
+
+/**
+ * Click, but say so when it cannot land (a dialog in the way, a hidden
+ * element) instead of retrying silently for Playwright's 30 s and moving on.
+ */
+async function clickTarget(page: Page, selector: string): Promise<void> {
+  await page.click(selector, { timeout: 5000 }).catch((err: Error) => {
+    console.warn(`DemoScript: click on ${selector} did not land: ${err.message.split('\n')[0]}`)
+  })
+}
+
+/**
+ * Live capture: glide the cursor with one CSS transition the page animates at
+ * its own frame rate. Driving it a frame at a time over CDP cannot keep up
+ * with a live app (each step is a round trip), and the cursor stutters.
+ */
+async function glideCursor(page: Page, from: { x: number; y: number }, to: { x: number; y: number }, ms: number): Promise<void> {
+  await injectCursor(page, from.x, from.y)
+  await page.evaluate(({ x, y, ms }) => {
+    const cursor = document.getElementById('__demoscript_cursor') as HTMLElement | null
+    if (!cursor) return
+    cursor.style.transition = `transform ${ms}ms cubic-bezier(.2,.7,.2,1)`
+    void cursor.offsetWidth // start from the current position
+    cursor.style.transform = `translate(${x}px, ${y}px)`
+  }, { x: to.x, y: to.y, ms })
+  // The real pointer follows (hover states), in a few steps, while it glides.
+  await Promise.all([page.mouse.move(to.x, to.y, { steps: 6 }).catch(() => {}), sleep(ms)])
+  await page.evaluate(() => {
+    const cursor = document.getElementById('__demoscript_cursor') as HTMLElement | null
+    if (cursor) cursor.style.transition = ''
+  })
+}
+
+/** A ring that grows and fades where a click lands. */
+async function ripple(page: Page, x: number, y: number): Promise<void> {
+  await page.evaluate(({ x, y }) => {
+    const r = document.createElement('div')
+    r.style.cssText = `position:fixed;left:${x - 22}px;top:${y - 22}px;width:44px;height:44px;border-radius:50%;border:2px solid rgba(255,255,255,.9);box-shadow:0 0 0 1px rgba(0,0,0,.35);pointer-events:none;z-index:2147483646;transition:transform .45s ease-out,opacity .45s ease-out;transform:scale(.3);opacity:1`
+    document.documentElement.appendChild(r)
+    requestAnimationFrame(() => {
+      r.style.transform = 'scale(1.3)'
+      r.style.opacity = '0'
+    })
+    setTimeout(() => r.remove(), 600)
+  }, { x, y })
+}
+
 export async function actionCursorMove(ctx: ActionContext): Promise<void> {
   const { page, step, shared } = ctx
 
@@ -393,6 +455,13 @@ export async function actionCursorMove(ctx: ActionContext): Promise<void> {
 
   const startX = shared.cursorX
   const startY = shared.cursorY
+
+  if (ctx.live) {
+    await glideCursor(page, { x: startX, y: startY }, targetPos, step.duration * 1000)
+    shared.cursorX = targetPos.x
+    shared.cursorY = targetPos.y
+    return
+  }
 
   await captureFrames(ctx, step.duration, async (progress) => {
     const x = startX + (targetPos.x - startX) * progress
@@ -458,6 +527,17 @@ export async function actionClick(ctx: ActionContext): Promise<void> {
   const moveDuration = step.duration * 0.6
   const holdDuration = step.duration * 0.4
 
+  if (ctx.live) {
+    await glideCursor(page, { x: startX, y: startY }, targetPos, moveDuration * 1000)
+    shared.cursorX = targetPos.x
+    shared.cursorY = targetPos.y
+    await ripple(page, targetPos.x, targetPos.y)
+    const clickedAt = Date.now()
+    if (step.target) await clickTarget(page, step.target)
+    await sleep(holdDuration * 1000 - (Date.now() - clickedAt))
+    return
+  }
+
   await captureFrames({ ...ctx, step: { ...ctx.step, duration: moveDuration } }, moveDuration, async (progress) => {
     const x = startX + (targetPos.x - startX) * progress
     const y = startY + (targetPos.y - startY) * progress
@@ -469,9 +549,7 @@ export async function actionClick(ctx: ActionContext): Promise<void> {
   shared.cursorY = targetPos.y
 
   // Click
-  if (step.target) {
-    await page.click(step.target).catch(() => {})
-  }
+  if (step.target) await clickTarget(page, step.target)
 
   // 40% of duration: hold on the clicked element
   await captureFrames({ ...ctx, step: { ...ctx.step, duration: holdDuration } }, holdDuration, async () => {
@@ -491,6 +569,25 @@ export async function actionType(ctx: ActionContext): Promise<void> {
     const rect = el.getBoundingClientRect()
     return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }
   }, step.target)
+
+  if (ctx.live) {
+    // Real keystrokes: a framework-controlled input (React, Vue) ignores a
+    // value set from outside and snaps back to its own state.
+    const started = Date.now()
+    if (targetPos) {
+      await glideCursor(page, { x: shared.cursorX, y: shared.cursorY }, targetPos, 400)
+      shared.cursorX = targetPos.x
+      shared.cursorY = targetPos.y
+      await ripple(page, targetPos.x, targetPos.y)
+    }
+    const field = page.locator(step.target).first()
+    await field.click().catch(() => {})
+    await field.fill('').catch(() => {})
+    const budget = step.duration * 1000 - (Date.now() - started)
+    await field.pressSequentially(text, { delay: Math.max(20, Math.min(120, budget / text.length)) })
+    await sleep(step.duration * 1000 - (Date.now() - started))
+    return
+  }
 
   if (targetPos) {
     await injectCursor(page, targetPos.x, targetPos.y)
@@ -540,6 +637,14 @@ export async function actionHover(ctx: ActionContext): Promise<void> {
   const moveDuration = step.duration * 0.4
   const holdDuration = step.duration * 0.6
 
+  if (ctx.live) {
+    await glideCursor(page, { x: startX, y: startY }, targetPos, moveDuration * 1000)
+    shared.cursorX = targetPos.x
+    shared.cursorY = targetPos.y
+    await sleep(holdDuration * 1000)
+    return
+  }
+
   await captureFrames({ ...ctx, step: { ...ctx.step, duration: moveDuration } }, moveDuration, async (progress) => {
     const x = startX + (targetPos.x - startX) * progress
     const y = startY + (targetPos.y - startY) * progress
@@ -556,6 +661,50 @@ export async function actionHover(ctx: ActionContext): Promise<void> {
   await captureFrames({ ...ctx, step: { ...ctx.step, duration: holdDuration } }, holdDuration, async () => {
     await injectCursor(page, targetPos.x, targetPos.y)
   })
+}
+
+/** The browser-side test for a wait-for step; true when the wait is over. */
+export function waitForCheck(until: NonNullable<Step['until']>): string {
+  const parts: string[] = []
+  if (until.selector) {
+    const sel = JSON.stringify(until.selector)
+    parts.push(
+      `(() => { const el = document.querySelector(${sel}); if (!el) return false; const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 })()`
+    )
+  }
+  if (until.text) parts.push(`(document.body?.innerText ?? '').includes(${JSON.stringify(until.text)})`)
+  if (until.js) parts.push(`Boolean(${until.js})`)
+  if (parts.length === 0) throw new Error('wait-for needs until.selector, until.text or until.js')
+  return parts.join(' && ')
+}
+
+/**
+ * Wait until the page says so — a backup finishing, an export done — while
+ * recording nothing, then optionally show how long was skipped.
+ */
+export async function actionWaitFor(ctx: ActionContext): Promise<void> {
+  const { page, step } = ctx
+  if (!step.until) throw new Error(`wait-for step "${step.targetLabel || step.id}" has no until`)
+  const check = waitForCheck(step.until)
+  const timeoutS = step.timeout ?? 600
+  const wasRecording = ctx.live?.recording ?? false
+  ctx.live?.pause()
+  if (step.annotation) await clearText(page) // the caption belongs to the card
+  const started = Date.now()
+  for (;;) {
+    if (await page.evaluate(check).catch(() => false)) break
+    if (Date.now() - started > timeoutS * 1000) {
+      throw new Error(`wait-for timed out after ${timeoutS}s: ${JSON.stringify(step.until)}`)
+    }
+    await new Promise((r) => setTimeout(r, 250))
+  }
+  const waited = (Date.now() - started) / 1000
+  if (wasRecording) ctx.live?.resume()
+  if (step.skipCard) {
+    await showTitleCard(page, { text: skipCardText(waited, step.skipCard), subtitle: step.subtitle })
+    await captureFrames(ctx, step.duration || 1.2, async () => {})
+    await clearText(page)
+  }
 }
 
 export async function executeAction(ctx: ActionContext): Promise<void> {
@@ -588,6 +737,8 @@ export async function executeAction(ctx: ActionContext): Promise<void> {
       return actionHover(ctx)
     case 'title':
       return actionTitle(ctx)
+    case 'wait-for':
+      return actionWaitFor(ctx)
     default:
       return actionWait(ctx)
   }
